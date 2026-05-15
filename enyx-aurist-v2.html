@@ -1,0 +1,2779 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HQ Dashboard | Enyx & Aurist</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%231a1a1a'/%3E%3Crect x='8' y='32' width='10' height='22' rx='2' fill='%23FFC107'/%3E%3Crect x='22' y='22' width='10' height='32' rx='2' fill='%23E5C07B'/%3E%3Crect x='36' y='14' width='10' height='40' rx='2' fill='%23FFC107' opacity='.7'/%3E%3Crect x='50' y='26' width='6' height='28' rx='2' fill='%23E5C07B' opacity='.5'/%3E%3Cline x1='8' y1='10' x2='56' y2='10' stroke='%23FFC107' stroke-width='2.5' stroke-linecap='round'/%3E%3C/svg%3E">
+
+    <!-- Enyx fonts & libs -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;700;800&family=Prompt:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <!-- Firebase -->
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+
+    <style>
+        /* ===================================================
+           SYSTEM SWITCHER  (top-level, always visible)
+        =================================================== */
+        .system-switcher {
+            position: fixed; top: 0; left: 0; width: 100%; z-index: 9999;
+            display: flex; justify-content: center; gap: 0;
+            background: rgba(0,0,0,0.85);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+            padding: 0;
+            overflow-x: auto; /* BUG#5 FIX: ให้ scroll แทนล้น */
+            -webkit-overflow-scrolling: touch;
+        }
+        .sys-btn {
+            /* BUG#5 FIX: เปลี่ยนจาก flex: 0 0 200px เป็น flex-shrink ได้ */
+            flex: 0 0 auto; padding: 14px 20px;
+            background: transparent; border: none; cursor: pointer;
+            font-weight: 700; letter-spacing: 1.5px;
+            text-transform: uppercase; color: rgba(255,255,255,0.38);
+            transition: all 0.3s; position: relative;
+            font-family: 'Sarabun', 'Prompt', sans-serif; font-size: 0.88rem;
+            white-space: nowrap;
+        }
+        /* BUG#5 FIX: ซ่อน fb-status label บนมือถือ แสดงแค่ dot */
+        @media (max-width: 600px) {
+            .sys-btn { padding: 12px 14px; font-size: 0.78rem; letter-spacing: 1px; }
+            .fb-status-lbl-text { display: none; }
+            #current-user-name { display: none !important; }
+            .sys-switcher-user-name { display: none; }
+        }
+        .sys-btn::after {
+            content: ''; position: absolute; bottom: 0; left: 50%; right: 50%;
+            height: 2px; transition: all 0.35s cubic-bezier(0.4,0,0.2,1);
+        }
+        .sys-btn.enyx-active { color: #FFC107; }
+        .sys-btn.enyx-active::after { background: #FFC107; left: 16px; right: 16px; }
+        .sys-btn.aurist-active { color: #E5C07B; }
+        .sys-btn.aurist-active::after { background: #E5C07B; left: 16px; right: 16px; }
+        .sys-divider { width: 1px; background: rgba(255,255,255,0.1); align-self: stretch; }
+
+        /* Firebase status */
+        .fb-status {
+            display: flex; align-items: center; gap: 6px;
+            padding: 0 18px; font-size: 0.72rem; font-weight: 600;
+            letter-spacing: 1px; color: rgba(255,255,255,0.35);
+            font-family: 'Sarabun', sans-serif;
+        }
+        #fb-status-dot {
+            width: 7px; height: 7px; border-radius: 50%;
+            background: #f97316; transition: background 0.4s;
+            flex-shrink: 0;
+        }
+
+        /* Each system wrapper */
+        .system-wrap { display: none; }
+        .system-wrap.active { display: block; }
+
+        /* ===================================================
+           ENYX STYLES
+        =================================================== */
+        #enyx-wrap {
+            font-family: 'Sarabun', sans-serif;
+            background-color: #f3f6f9;
+            min-height: 100vh;
+            padding-top: 55px; /* offset switcher */
+        }
+        /* CSS variables are defined inline where needed */
+
+        #enyx-wrap .navbar {
+            background: white !important;
+            box-shadow: 0 2px 20px rgba(0,0,0,0.05);
+            padding: 1rem 0;
+        }
+        #enyx-wrap .brand-logo {
+            background: linear-gradient(135deg,#FFC107 0%,#FF9800 100%);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            font-weight: 800; letter-spacing: 1px; font-size: 1.5rem;
+        }
+        #enyx-wrap .custom-nav { display:flex; justify-content:center; gap:15px; margin-bottom:25px; list-style:none; padding:0; }
+        #enyx-wrap .custom-tab-btn { background:white; border:2px solid #e9ecef; color:#7e8299; font-weight:600; padding:12px 30px; border-radius:12px; cursor:pointer; transition:all 0.3s; display:flex; align-items:center; }
+        #enyx-wrap .custom-tab-btn:hover { background:#f8f9fa; }
+        #enyx-wrap .custom-tab-btn.active { background:linear-gradient(135deg,#FFC107 0%,#FF9800 100%); color:white; border-color:transparent; box-shadow:0 5px 15px rgba(255,193,7,0.3); }
+        #enyx-wrap .page-content { display:none; animation:enyxFadeIn 0.4s ease-in-out; }
+        #enyx-wrap .page-content.active { display:block; }
+        @keyframes enyxFadeIn { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+        #enyx-wrap .card-modern { border:none; border-radius:16px; background:white; box-shadow:0 10px 30px rgba(0,0,0,0.05); padding:25px; position:relative; }
+        #enyx-wrap .stat-value { font-size:3rem; font-weight:800; line-height:1; color:#212529; }
+        #enyx-wrap .stat-label { font-size:0.9rem; color:#b5b5c3; font-weight:600; text-transform:uppercase; }
+        #enyx-wrap .round-selector { display:flex; background:#f1f1f4; padding:5px; border-radius:12px; margin-bottom:20px; }
+        #enyx-wrap .round-option { flex:1; text-align:center; padding:10px; cursor:pointer; border-radius:10px; font-weight:600; color:#7e8299; transition:all 0.3s; }
+        #enyx-wrap .round-input { display:none; }
+        #enyx-wrap .round-input:checked + .round-option { background:white; color:#212529; box-shadow:0 4px 12px rgba(0,0,0,0.05); }
+        #enyx-wrap .form-label-group { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+        #enyx-wrap .plat-tag { display:flex; align-items:center; font-weight:600; font-size:0.9rem; }
+        #enyx-wrap .plat-dot { width:10px; height:10px; border-radius:50%; margin-right:10px; }
+        #enyx-wrap .dot-shopee { background:#ee4d2d; }
+        #enyx-wrap .dot-tiktok { background:#000; }
+        #enyx-wrap .dot-lazada { background:#0f146d; }
+        #enyx-wrap .dot-amaze  { background:#007bff; }
+        #enyx-wrap .dot-homepro{ background:#0dcaf0; }
+        #enyx-wrap .input-modern { border:2px solid #f1f1f4; border-radius:8px; padding:6px 15px; font-weight:700; text-align:right; color:#212529; width:100px; }
+        #enyx-wrap .input-modern:focus { border-color:#FFC107; outline:none; background:#fffdf5; }
+        /* BUG#8 FIX: ENYX mobile — form-label-group แสดงเป็น stack */
+        @media (max-width: 480px) {
+            #enyx-wrap .form-label-group { flex-direction: row; justify-content: space-between; }
+            #enyx-wrap .input-modern { width: 90px; }
+            #enyx-wrap .custom-nav { flex-wrap: wrap; gap: 8px; }
+            #enyx-wrap .custom-tab-btn { padding: 10px 16px; font-size: 0.85rem; }
+        }
+        #enyx-wrap .table-modern { width:100%; border-collapse:separate; border-spacing:0 8px; }
+        #enyx-wrap .table-modern td { background:white; padding:12px 15px; border-top:1px solid #f9f9f9; border-bottom:1px solid #f9f9f9; vertical-align:middle; }
+        #enyx-wrap .table-modern tr td:first-child { border-left:1px solid #f9f9f9; border-top-left-radius:10px; border-bottom-left-radius:10px; }
+        #enyx-wrap .table-modern tr td:last-child { border-right:1px solid #f9f9f9; border-top-right-radius:10px; border-bottom-right-radius:10px; }
+        #enyx-wrap .row-highlight td { background:#fffcf2 !important; border-color:#ffeeba !important; font-weight:700; color:#856404; }
+        #enyx-wrap .row-total td { background:#212529 !important; color:#FFC107 !important; font-weight:800; font-size:1.2rem; }
+        #enyx-wrap .btn-capture { background:#f1f1f4; border:none; width:38px; height:38px; border-radius:50%; color:#212529; cursor:pointer; transition:0.2s; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+        #enyx-wrap .btn-capture:hover { background:#FFC107; color:white; }
+        /* date badge in summary */
+        #enyx-wrap .summary-date-badge { font-size:0.78rem; color:#888; margin-bottom:6px; }
+
+        /* ===================================================
+           AURIST STYLES
+        =================================================== */
+        #aurist-wrap {
+            font-family: 'Prompt', sans-serif;
+            background-color: #080810;
+            color: #ffffff;
+            min-height: 100vh;
+            padding-top: 55px;
+            padding-bottom: 160px;
+            position: relative;
+            overflow-x: hidden;
+        }
+        #aurist-wrap::before {
+            content:''; position:fixed; top:0; left:0; width:100vw; height:100vh;
+            background-image:radial-gradient(rgba(255,255,255,0.035) 1px, transparent 1px);
+            background-size:28px 28px; z-index:0; pointer-events:none;
+        }
+        #aurist-wrap::after {
+            content:''; position:fixed; top:0; left:0; width:100vw; height:100vh;
+            background:repeating-linear-gradient(0deg,transparent,transparent 27px,rgba(255,255,255,0.012) 28px);
+            z-index:0; pointer-events:none;
+        }
+        .aurist-orb { position:fixed; border-radius:50%; filter:blur(120px); pointer-events:none; z-index:0; animation:floatOrb 20s infinite alternate ease-in-out; }
+        .aurist-orb-gold { width:55vw; height:55vw; max-width:640px; max-height:640px; top:-15%; left:-15%; background:radial-gradient(circle,rgba(229,192,123,0.13) 0%,transparent 70%); }
+        .aurist-orb-blue { width:65vw; height:65vw; max-width:750px; max-height:750px; bottom:-20%; right:-20%; background:radial-gradient(circle,rgba(79,172,254,0.09) 0%,transparent 70%); animation-delay:-7s; animation-duration:26s; }
+        @keyframes floatOrb { 0%{transform:translate(0,0) scale(1)} 50%{transform:translate(25px,40px) scale(1.06)} 100%{transform:translate(-20px,15px) scale(0.97)} }
+
+        #aurist-wrap .a-container { width:100%; max-width:680px; margin:0 auto; position:relative; z-index:1; padding:30px 20px 0; }
+        @keyframes slideUpFade { from{opacity:0;transform:translateY(28px)} to{opacity:1;transform:translateY(0)} }
+        @keyframes popPulse { 0%{transform:scale(1)} 50%{transform:scale(1.08);text-shadow:0 0 10px rgba(255,255,255,0.4)} 100%{transform:scale(1)} }
+        .animate-pop { animation:popPulse 0.3s ease-out; }
+
+        /* header */
+        #aurist-wrap .a-header { text-align:center; margin-bottom:40px; animation:slideUpFade 0.8s ease-out; }
+        #aurist-wrap .shop-name { font-size:3rem; font-weight:600; letter-spacing:8px; text-transform:uppercase; margin-bottom:5px; text-shadow:0 4px 20px rgba(229,192,123,0.15); }
+        #aurist-wrap .shop-name span { color:#E5C07B; }
+        #aurist-wrap .a-header h1 { color:#a1a1aa; font-weight:300; font-size:1.1rem; margin-bottom:16px; letter-spacing:1px; }
+        #aurist-wrap .date-display { display:inline-block; background:rgba(14,14,22,0.7); backdrop-filter:blur(10px); color:#E5C07B; padding:8px 22px; border-radius:30px; font-size:0.95rem; font-weight:300; border:1px solid rgba(229,192,123,0.2); }
+
+        /* toolbar */
+        #aurist-wrap .a-toolbar { display:flex; justify-content:flex-end; gap:12px; margin-bottom:20px; flex-wrap:wrap; }
+        #aurist-wrap .a-btn { background:rgba(14,14,22,0.7); border:1px solid rgba(255,255,255,0.12); color:#a1a1aa; padding:8px 18px; border-radius:10px; font-family:'Prompt',sans-serif; font-size:0.88rem; cursor:pointer; transition:all 0.2s ease; }
+        #aurist-wrap .a-btn:hover { background:rgba(255,255,255,0.07); color:#fff; border-color:rgba(255,255,255,0.25); }
+        #aurist-wrap .a-btn-danger:hover { border-color:rgba(255,80,80,0.4); color:#ff7070; }
+        #aurist-wrap .a-btn-gold { border-color:rgba(229,192,123,0.35); color:#E5C07B; }
+        #aurist-wrap .a-btn-gold:hover { background:rgba(229,192,123,0.08); border-color:rgba(229,192,123,0.6); }
+
+        /* round selector */
+        #aurist-wrap .a-round-selector { display:flex; background:rgba(14,14,22,0.7); padding:5px; border-radius:14px; margin-bottom:24px; border:1px solid rgba(255,255,255,0.07); gap:4px; }
+        #aurist-wrap .a-round-input { display:none; }
+        #aurist-wrap .a-round-option { flex:1; text-align:center; padding:10px; cursor:pointer; border-radius:10px; font-weight:500; color:#a1a1aa; transition:all 0.3s; font-size:0.95rem; }
+        #aurist-wrap .a-round-input:checked + .a-round-option { background:rgba(229,192,123,0.12); color:#E5C07B; border:1px solid rgba(229,192,123,0.25); }
+
+        /* period card (now used as round card) */
+        #aurist-wrap .a-round-card { background:rgba(14,14,22,0.65); backdrop-filter:blur(16px); border:1px solid rgba(255,255,255,0.08); border-radius:20px; padding:28px; margin-bottom:0; box-shadow:0 12px 32px rgba(0,0,0,0.4); }
+        #aurist-wrap .a-card-accent { height:3px; margin:-28px -28px 24px; border-radius:18px 18px 0 0; }
+        #aurist-wrap .a-input-row { display:flex; justify-content:space-between; align-items:center; padding:8px 0 14px; margin-bottom:0; border-bottom:1px solid rgba(255,255,255,0.05); }
+        #aurist-wrap .a-input-row:last-child { border-bottom:none; padding-bottom:4px; }
+        #aurist-wrap .a-input-label { font-size:1rem; font-weight:300; color:#e0e0ea; }
+        #aurist-wrap .a-plat-dot { width:9px; height:9px; border-radius:50%; display:inline-block; margin-right:10px; }
+        #aurist-wrap .a-input-field { background:rgba(34,34,44,0.8); border:1px solid rgba(255,255,255,0.09); color:#fff; padding:10px 12px; border-radius:10px; width:120px; text-align:right; font-family:'Prompt',sans-serif; font-size:1rem; outline:none; transition:all 0.25s; }
+        @media (min-width: 480px) { #aurist-wrap .a-input-field { width:140px; font-size:1.1rem; padding:10px 16px; } }
+        /* BUG#8 FIX: AURIST container padding on mobile */
+        @media (max-width: 480px) {
+            #aurist-wrap .a-container { padding: 20px 12px 0; }
+            #aurist-wrap .a-round-card { padding: 20px 16px; }
+            #aurist-wrap .a-card-accent { margin: -20px -16px 18px; }
+            #aurist-wrap .a-bar-name { width: 130px; }
+        }
+        #aurist-wrap .a-input-field:focus { background:#050509; transform:scale(1.02); }
+        #aurist-wrap .a-input-field::-webkit-outer-spin-button, #aurist-wrap .a-input-field::-webkit-inner-spin-button { -webkit-appearance:none; }
+        #aurist-wrap .a-input-field[type=number] { -moz-appearance:textfield; }
+        #aurist-wrap .a-section-label { font-size:0.72rem; font-weight:500; color:#a1a1aa; text-transform:uppercase; letter-spacing:2.5px; margin:16px 0 10px; }
+        #aurist-wrap .a-section-divider { height:1px; background:rgba(255,255,255,0.06); margin:12px 0; }
+
+        /* save btn */
+        #aurist-wrap .a-save-btn { width:100%; padding:14px; background:linear-gradient(135deg,rgba(229,192,123,0.15),rgba(229,192,123,0.08)); border:1px solid rgba(229,192,123,0.3); color:#E5C07B; border-radius:12px; font-family:'Prompt',sans-serif; font-size:1rem; font-weight:500; cursor:pointer; margin-top:20px; transition:all 0.25s; letter-spacing:1px; }
+        #aurist-wrap .a-save-btn:hover { background:rgba(229,192,123,0.18); border-color:rgba(229,192,123,0.5); }
+
+        /* summary area */
+        #aurist-wrap .a-summary-section { margin-top:36px; }
+        #aurist-wrap .a-summary-card { background:linear-gradient(145deg,rgba(22,22,34,0.75),rgba(8,8,16,0.75)); backdrop-filter:blur(20px); border:1px solid rgba(229,192,123,0.18); border-radius:20px; padding:30px; margin-bottom:24px; box-shadow:0 20px 50px rgba(0,0,0,0.5); position:relative; }
+        #aurist-wrap .a-summary-title { color:#E5C07B; font-size:1.15rem; font-weight:500; margin-bottom:6px; }
+        #aurist-wrap .a-summary-date { font-size:0.78rem; color:#a1a1aa; margin-bottom:20px; }
+        #aurist-wrap .a-table { width:100%; border-collapse:separate; border-spacing:0 7px; }
+        #aurist-wrap .a-table td { background:rgba(0,0,0,0.35); padding:10px 14px; border:none; vertical-align:middle; }
+        #aurist-wrap .a-table tr td:first-child { border-top-left-radius:9px; border-bottom-left-radius:9px; }
+        #aurist-wrap .a-table tr td:last-child { border-top-right-radius:9px; border-bottom-right-radius:9px; text-align:right; }
+        #aurist-wrap .a-row-shopee td { background:rgba(238,77,45,0.1) !important; color:#ff8a6e; font-weight:600; }
+        #aurist-wrap .a-row-sub td { background:rgba(0,0,0,0.2) !important; color:#a1a1aa; font-size:0.88rem; }
+        #aurist-wrap .a-row-total td { background:rgba(229,192,123,0.08) !important; border:1px solid rgba(229,192,123,0.25); color:#E5C07B; font-weight:700; font-size:1.15rem; }
+        #aurist-wrap .a-btn-capture { background:rgba(255,255,255,0.07); border:1px solid rgba(255,255,255,0.1); width:36px; height:36px; border-radius:50%; color:#a1a1aa; cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; transition:0.2s; font-size:0.8rem; }
+        #aurist-wrap .a-btn-capture:hover { background:rgba(229,192,123,0.15); color:#E5C07B; border-color:rgba(229,192,123,0.4); }
+
+        /* grand summary */
+        #aurist-wrap .a-grand-card { background:linear-gradient(145deg,rgba(22,22,34,0.9),rgba(8,8,16,0.9)); backdrop-filter:blur(20px); border:1px solid rgba(229,192,123,0.3); border-radius:20px; padding:30px; position:relative; }
+
+        /* BUG#7 FIX: เพิ่ม minmax จาก 130px เป็น 160px บนมือถือ, 2 column max */
+        #aurist-wrap .a-metric-row { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:10px; margin-bottom:16px; }
+        @media (max-width: 480px) { #aurist-wrap .a-metric-row { grid-template-columns: repeat(2,1fr); } }
+        #aurist-wrap .a-metric-card { background:rgba(14,14,22,0.65); border:1px solid rgba(255,255,255,0.08); border-radius:14px; padding:16px 14px; }
+        #aurist-wrap .a-metric-label { font-size:0.7rem; color:#a1a1aa; text-transform:uppercase; letter-spacing:1.5px; margin-bottom:8px; }
+        #aurist-wrap .a-metric-value { font-size:1.25rem; font-weight:600; color:#fff; line-height:1; }
+        @media (min-width: 480px) { #aurist-wrap .a-metric-value { font-size:1.4rem; } }
+        #aurist-wrap .a-metric-sub { font-size:0.73rem; color:#a1a1aa; margin-top:4px; }
+
+        #aurist-wrap .a-bar-panel { background:rgba(14,14,22,0.65); border:1px solid rgba(255,255,255,0.08); border-radius:18px; padding:22px 24px 18px; }
+        #aurist-wrap .a-bar-panel-title { font-size:0.72rem; color:#a1a1aa; text-transform:uppercase; letter-spacing:2.5px; margin-bottom:18px; padding-bottom:12px; border-bottom:1px solid rgba(255,255,255,0.06); }
+        #aurist-wrap .a-bar-row { display:flex; align-items:center; gap:12px; margin-bottom:11px; }
+        #aurist-wrap .a-bar-row:last-child { margin-bottom:0; }
+        #aurist-wrap .a-bar-name { font-size:0.86rem; color:#d0d0de; font-weight:300; width:200px; flex-shrink:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        #aurist-wrap .a-bar-track { flex:1; height:4px; background:rgba(255,255,255,0.05); border-radius:3px; overflow:hidden; }
+        #aurist-wrap .a-bar-fill { height:100%; border-radius:3px; background:linear-gradient(90deg,#E5C07B,rgba(229,192,123,0.4)); transition:width 0.55s cubic-bezier(0.4,0,0.2,1); min-width:2px; }
+        #aurist-wrap .a-bar-val { font-size:0.86rem; color:#fff; width:40px; text-align:right; flex-shrink:0; }
+
+        /* dash divider */
+        #aurist-wrap .a-dash-divider { display:flex; align-items:center; gap:16px; margin:30px 0 22px; }
+        #aurist-wrap .a-dash-line { flex:1; height:1px; background:rgba(255,255,255,0.07); }
+        #aurist-wrap .a-dash-label { color:#a1a1aa; font-size:0.72rem; letter-spacing:3px; text-transform:uppercase; }
+
+        #aurist-wrap .a-save-indicator { text-align:center; color:#a1a1aa; font-size:0.73rem; margin-top:12px; opacity:0.5; }
+
+        /* sticky bar */
+        #aurist-wrap .a-sticky-total { position:fixed; bottom:0; left:0; width:100%; background:rgba(5,5,10,0.92); backdrop-filter:blur(25px); border-top:1px solid rgba(229,192,123,0.25); padding:16px 0; display:none; justify-content:center; align-items:center; z-index:100; box-shadow:0 -15px 40px rgba(0,0,0,0.6); }
+        #aurist-wrap.active-system .a-sticky-total { display:flex; }
+        #aurist-wrap .a-total-wrapper { display:flex; align-items:center; gap:22px; }
+        #aurist-wrap .a-total-label { color:#a1a1aa; font-size:1rem; font-weight:400; text-transform:uppercase; letter-spacing:2.5px; }
+        #aurist-wrap .a-total-amount { color:#E5C07B; font-size:2.6rem; font-weight:600; line-height:1; text-shadow:0 0 28px rgba(229,192,123,0.25); display:inline-block; }
+
+        /* toast */
+        .a-toast { position:fixed; bottom:110px; left:50%; transform:translateX(-50%) translateY(16px); background:rgba(14,14,22,0.96); border:1px solid rgba(229,192,123,0.35); color:#E5C07B; padding:10px 24px; border-radius:30px; font-size:0.88rem; opacity:0; transition:all 0.3s ease; z-index:9998; pointer-events:none; backdrop-filter:blur(12px); font-family:'Prompt',sans-serif; }
+        .a-toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+
+        /* reset button */
+        #aurist-wrap .a-reset-btn { display:block; margin:30px auto 0; background:transparent; border:1px solid rgba(255,80,80,0.25); color:rgba(255,80,80,0.6); padding:9px 28px; border-radius:20px; font-family:'Prompt',sans-serif; font-size:0.85rem; cursor:pointer; transition:all 0.2s; }
+        #aurist-wrap .a-reset-btn:hover { border-color:rgba(255,80,80,0.5); color:#ff7070; }
+
+        /* checklist status bar (Aurist) */
+        #aurist-wrap .a-checklist-bar { background:rgba(14,14,22,0.65); backdrop-filter:blur(16px); border:1px solid rgba(255,255,255,0.08); border-radius:14px; padding:14px 22px; margin-bottom:24px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; }
+        #aurist-wrap .a-cl-label { font-size:0.72rem; color:#a1a1aa; text-transform:uppercase; letter-spacing:2px; }
+        #aurist-wrap .a-cl-dots { display:flex; gap:18px; }
+        #aurist-wrap .a-cl-item { font-size:0.85rem; color:#a1a1aa; opacity:0.3; display:flex; align-items:center; gap:5px; }
+        #aurist-wrap .a-cl-item.done { opacity:1; color:#4ade80; }
+
+        /* ===================================================
+           HOME DASHBOARD STYLES  — White/Yellow/Black theme
+        =================================================== */
+        #home-wrap {
+            min-height: 100vh;
+            background: #f5f5f0;
+            color: #1a1a1a;
+            font-family: 'Sarabun', 'Prompt', sans-serif;
+            padding-top: 55px;
+            padding-bottom: 80px;
+        }
+        /* BUG#6 FIX: padding สำหรับมือถือ */
+        .h-container { max-width: 1100px; margin: 0 auto; padding: 24px 16px; }
+        @media (min-width: 768px) { .h-container { padding: 36px 24px; } }
+
+        /* ── Header ── */
+        .h-header { text-align: center; margin-bottom: 40px; padding: 28px 16px 24px;
+            background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+            border-radius: 20px; position: relative; overflow: hidden; }
+        @media (min-width: 768px) { .h-header { padding: 44px 0 36px; border-radius: 24px; } }
+        .h-header::before { content: ''; position: absolute; inset: 0;
+            background: repeating-linear-gradient(45deg, transparent, transparent 20px, rgba(255,193,7,0.03) 20px, rgba(255,193,7,0.03) 21px); }
+        .h-hq-label { font-size: 0.85rem; letter-spacing: 5px; color: rgba(255,193,7,0.7);
+            text-transform: uppercase; margin-bottom: 12px; position: relative; }
+        .h-title { font-size: 2.2rem; font-weight: 800; color: #fff; margin-bottom: 6px;
+            position: relative; letter-spacing: -0.5px; }
+        @media (min-width: 768px) { .h-title { font-size: 3rem; } }
+        .h-title span { color: #FFC107; }
+        .h-subtitle { font-size: 1.05rem; color: rgba(255,255,255,0.45); margin-bottom: 20px;
+            position: relative; font-weight: 300; }
+        .h-date-badge { display: inline-block;
+            background: linear-gradient(135deg, #FFC107 0%, #FF9800 100%);
+            color: #1a1a1a; padding: 10px 22px;
+            border-radius: 12px; font-size: 1rem; font-weight: 800;
+            letter-spacing: 1px; position: relative;
+            box-shadow: 0 6px 24px rgba(255,193,7,0.45); }
+        @media (min-width: 768px) { .h-date-badge { padding: 14px 36px; font-size: 1.3rem; } }
+
+        /* ── Capture button ── */
+        .h-capture-btn { display: inline-flex; align-items: center; gap: 8px;
+            margin-top: 18px; background: rgba(255,193,7,0.12); border: 1px solid rgba(255,193,7,0.35);
+            color: #FFC107; padding: 9px 22px; border-radius: 30px; font-size: 0.88rem;
+            font-weight: 600; cursor: pointer; transition: all 0.2s; position: relative;
+            letter-spacing: 0.5px; font-family: 'Sarabun','Prompt',sans-serif; }
+        .h-capture-btn:hover { background: rgba(255,193,7,0.22); border-color: rgba(255,193,7,0.6); }
+        .h-capture-btn svg { flex-shrink: 0; }
+
+        /* ── Divider ── */
+        .h-divider { display: flex; align-items: center; gap: 14px; margin: 28px 0 20px; }
+        .h-divider-line { flex: 1; height: 2px; background: #e8e8e0; }
+        .h-divider-label { font-size: 0.82rem; letter-spacing: 3px; text-transform: uppercase;
+            color: #777; white-space: nowrap; font-weight: 700; background: #f5f5f0; padding: 0 6px; }
+
+        /* ── Enter system cards ── */
+        .h-enter-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+        @media (max-width: 540px) { .h-enter-grid { grid-template-columns: 1fr; } }
+        .h-enter-btn { display: flex; align-items: center; justify-content: space-between;
+            padding: 22px 24px; border-radius: 18px; cursor: pointer; border: 2px solid;
+            transition: all 0.25s; background: #fff; box-shadow: 0 4px 16px rgba(0,0,0,0.07); }
+        .h-enter-btn:hover { transform: translateY(-3px); box-shadow: 0 10px 28px rgba(0,0,0,0.12); }
+        .h-enter-btn-enyx  { border-color: #FFC107; }
+        .h-enter-btn-enyx:hover  { border-color: #FF9800; background: #fffdf0; }
+        .h-enter-btn-aurist { border-color: #E5C07B; }
+        .h-enter-btn-aurist:hover { border-color: #c9a55a; background: #fffcf5; }
+        .h-enter-brand { font-size: 1.15rem; font-weight: 800; letter-spacing: 3px; color: #1a1a1a; }
+        .h-enter-sub { font-size: 0.78rem; color: #999; margin-top: 3px; letter-spacing: 1px; }
+        .h-enter-num { font-size: 2rem; font-weight: 800; line-height: 1; }
+        .h-enter-unit { font-size: 0.72rem; color: #aaa; letter-spacing: 1.5px; margin-top: 2px; }
+        .h-enter-arrow { font-size: 1.4rem; margin-left: 10px; opacity: 0.4; }
+
+        /* ── Combined total card ── */
+        .h-combined { background: #1a1a1a; border-radius: 22px; padding: 28px 32px;
+            margin-bottom: 20px;
+            display: flex; flex-direction: column; gap: 0;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.18); position: relative; }
+        .h-combined::before { content: ''; position: absolute; top: -40px; right: -40px;
+            width: 200px; height: 200px; border-radius: 50%;
+            background: radial-gradient(circle, rgba(255,193,7,0.08) 0%, transparent 70%);
+            pointer-events: none; }
+        .h-combined-body { display: flex; justify-content: space-between; align-items: center;
+            gap: 24px; flex-wrap: wrap; margin-top: 4px; }
+        .h-combined-date {
+            display: block;
+            width: 100%;
+            box-sizing: border-box;
+            font-size: 2rem;
+            font-weight: 800;
+            color: #FFC107;
+            letter-spacing: 2px;
+            margin-bottom: 14px;
+            padding: 14px 24px;
+            background: rgba(255,193,7,0.15);
+            border: 2px solid rgba(255,193,7,0.5);
+            border-radius: 12px;
+            text-align: center;
+        }
+        .h-combined-label { font-size: 0.88rem; letter-spacing: 3px; text-transform: uppercase;
+            color: rgba(255,255,255,0.5); margin-bottom: 10px; font-weight: 600; }
+        .h-combined-num { font-size: 3.5rem; font-weight: 800; color: #FFC107; line-height: 1; }
+        @media (min-width: 768px) { .h-combined-num { font-size: 5rem; } }
+        .h-combined-sub { font-size: 0.95rem; color: rgba(255,255,255,0.5); margin-top: 12px; font-weight: 500; }
+        .h-combined-breakdown { display: flex; gap: 24px; flex-wrap: wrap; }
+        .h-cbd-item { text-align: center; padding: 18px 24px; background: rgba(255,255,255,0.05);
+            border-radius: 14px; border: 1px solid rgba(255,255,255,0.08); min-width: 100px; }
+        .h-cbd-val { font-size: 2.2rem; font-weight: 700; color: #fff; }
+        .h-cbd-label { font-size: 0.78rem; letter-spacing: 2px; text-transform: uppercase;
+            color: rgba(255,255,255,0.45); margin-top: 6px; }
+
+        /* ── Round cards ── */
+        .h-rounds-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+        @media (max-width: 600px) { .h-rounds-grid { grid-template-columns: repeat(2, 1fr); } }
+        .h-round-card { background: #fff; border: 2px solid #e8e8e0; border-radius: 16px;
+            padding: 20px 16px; text-align: center; transition: all 0.25s;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+        .h-round-card.done { border-color: #FFC107; background: #fffdf0; }
+        .h-round-dot { width: 10px; height: 10px; border-radius: 50%;
+            background: #ddd; margin: 0 auto 12px; }
+        .h-round-card.done .h-round-dot { background: #FFC107; box-shadow: 0 0 8px rgba(255,193,7,0.5); }
+        .h-round-name { font-size: 0.95rem; color: #aaa; font-weight: 700; margin-bottom: 8px; }
+        .h-round-card.done .h-round-name { color: #FF9800; }
+        .h-round-val { font-size: 2rem; font-weight: 800; color: #1a1a1a; }
+        .h-round-sys { font-size: 0.75rem; color: #bbb; letter-spacing: 1px;
+            text-transform: uppercase; margin-top: 6px; }
+        .h-round-card.done .h-round-sys { color: #888; }
+
+        /* ── Panels ── */
+        .h-two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+        @media (max-width: 750px) { .h-two-col { grid-template-columns: 1fr; } }
+        .h-panel { background: #fff; border-radius: 20px; padding: 24px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.07); border: 1px solid #e8e8e0; }
+        .h-panel-header { display: flex; justify-content: space-between; align-items: flex-start;
+            margin-bottom: 18px; padding-bottom: 14px; border-bottom: 2px solid #f0f0e8; }
+        .h-panel-title-text { font-size: 0.8rem; letter-spacing: 2.5px; text-transform: uppercase;
+            color: #888; font-weight: 700; }
+        .h-panel-brand { font-size: 1.1rem; font-weight: 800; letter-spacing: 2px; }
+        .h-panel-total { font-size: 0.82rem; color: #888; margin-top: 3px; text-align: right; }
+        .h-panel-total strong { font-size: 1.4rem; font-weight: 800; color: #1a1a1a; display: block; }
+
+        /* ── Bar rows ── */
+        .h-bar-row { display: flex; align-items: center; gap: 10px; margin-bottom: 13px; }
+        .h-bar-row:last-child { margin-bottom: 0; }
+        .h-bar-name { font-size: 0.92rem; color: #333; font-weight: 600;
+            width: 160px; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .h-bar-track { flex: 1; height: 8px; background: #f0f0e8; border-radius: 4px; overflow: hidden; }
+        .h-bar-fill { height: 100%; border-radius: 4px; min-width: 4px;
+            transition: width 0.7s cubic-bezier(0.4,0,0.2,1); }
+        .h-bar-val { font-size: 0.92rem; color: #1a1a1a; font-weight: 800;
+            width: 42px; text-align: right; flex-shrink: 0; }
+
+        /* ── Chart ── */
+        .h-chart-wrap { position: relative; height: 220px; width: 100%; overflow: hidden; }
+        .h-chart-wrap img { width: 100%; height: 100%; object-fit: contain; display: block; }
+
+        /* ── Mini stats ── */
+        .h-stat-row { display: grid; grid-template-columns: repeat(3,1fr); gap: 14px; margin-bottom: 20px; }
+        @media (max-width: 600px) { .h-stat-row { grid-template-columns: repeat(2,1fr); } }
+        .h-stat-mini { background: #fff; border: 1px solid #e8e8e0; border-radius: 16px;
+            padding: 18px 18px 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+        .h-stat-mini-label { font-size: 0.75rem; letter-spacing: 2px; text-transform: uppercase;
+            color: #999; margin-bottom: 8px; font-weight: 700; }
+        .h-stat-mini-val { font-size: 1.5rem; font-weight: 800; color: #1a1a1a; }
+        .h-stat-mini-sub { font-size: 0.78rem; color: #bbb; margin-top: 4px; }
+
+        /* ── Last update ── */
+        .h-last-update { text-align: center; font-size: 0.82rem; color: #bbb;
+            margin-top: 32px; letter-spacing: 1px; }
+
+        /* ── Capture zone ── */
+        #h-capture-zone { box-sizing: border-box; }
+
+        /* sys-btn home variant */
+        .sys-btn.home-active { color: #fff; }
+        .sys-btn.home-active::after { background: #fff; left: 16px; right: 16px; }
+    </style>
+</head>
+<body>
+
+<!-- ===== LOGIN SCREEN ===== -->
+<div id="login-screen" style="
+    position:fixed;inset:0;z-index:99999;
+    background:#0a0a0f;
+    display:flex;align-items:center;justify-content:center;
+    font-family:'Sarabun','Prompt',sans-serif;
+    flex-direction:column;
+    padding:16px;
+    overflow-y:auto;
+">
+    <div style="text-align:center;margin-bottom:40px">
+        <div style="font-size:2.8rem;font-weight:800;letter-spacing:6px;color:#fff;margin-bottom:4px">
+            HQ<span style="color:#FFC107">.</span>
+        </div>
+        <div style="font-size:0.8rem;letter-spacing:4px;color:rgba(255,255,255,0.3);text-transform:uppercase">
+            Sales Command Center
+        </div>
+    </div>
+
+    <div style="width:min(380px,100%);background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:20px;padding:24px 20px">
+        <!-- BUG#9 FIX: padding ลดลงบนมือถือ (เดิม padding:32px 28px) -->
+
+        <!-- Tab -->
+        <div style="display:flex;gap:0;margin-bottom:28px;background:rgba(0,0,0,0.3);border-radius:12px;padding:4px">
+            <button id="tab-google" onclick="loginTabSwitch('google')"
+                style="flex:1;padding:9px;border:none;border-radius:9px;font-family:'Sarabun',sans-serif;font-size:0.85rem;font-weight:700;cursor:pointer;transition:all 0.2s;background:#FFC107;color:#1a1a1a">
+                Admin
+            </button>
+            <button id="tab-user" onclick="loginTabSwitch('user')"
+                style="flex:1;padding:9px;border:none;border-radius:9px;font-family:'Sarabun',sans-serif;font-size:0.85rem;font-weight:700;cursor:pointer;transition:all 0.2s;background:transparent;color:rgba(255,255,255,0.4)">
+                ผู้ใช้งาน
+            </button>
+        </div>
+
+        <!-- Google Login (Admin) -->
+        <div id="login-google-panel">
+            <p style="font-size:0.82rem;color:rgba(255,255,255,0.4);text-align:center;margin-bottom:20px;line-height:1.6">
+                สำหรับผู้ดูแลระบบเท่านั้น<br>Login ด้วย Google Account ที่ได้รับสิทธิ์
+            </p>
+            <button onclick="loginWithGoogle()"
+                style="width:100%;padding:13px;border:1.5px solid rgba(255,255,255,0.15);border-radius:12px;
+                background:rgba(255,255,255,0.06);color:#fff;font-family:'Sarabun',sans-serif;
+                font-size:0.95rem;font-weight:700;cursor:pointer;display:flex;align-items:center;
+                justify-content:center;gap:10px;transition:all 0.2s">
+                <svg width="20" height="20" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20H24v8h11.3C33.6 33.6 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3 0 5.7 1.1 7.8 2.9l5.7-5.7C33.7 6.5 29.1 4.5 24 4.5 12.7 4.5 3.5 13.7 3.5 25S12.7 45.5 24 45.5 44.5 36.3 44.5 25c0-1.7-.2-3.4-.9-5z"/><path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.5 15.1 18.9 12 24 12c3 0 5.7 1.1 7.8 2.9l5.7-5.7C33.7 6.5 29.1 4.5 24 4.5c-7.5 0-14 4.3-17.7 10.2z"/><path fill="#4CAF50" d="M24 45.5c5 0 9.6-1.9 13-5l-6-5.2C29.3 36.9 26.8 38 24 38c-5.2 0-9.6-3.4-11.2-8.1l-6.5 5C9.9 41.1 16.5 45.5 24 45.5z"/><path fill="#1976D2" d="M43.6 20H24v8h11.3c-.8 2.3-2.3 4.2-4.3 5.6l6 5.2c3.5-3.2 5.5-8 5.5-13.8 0-1.7-.2-3.4-.9-5z"/></svg>
+                เข้าสู่ระบบด้วย Google
+            </button>
+        </div>
+
+        <!-- Email/Password Login (User) -->
+        <div id="login-user-panel" style="display:none">
+            <p style="font-size:0.82rem;color:rgba(255,255,255,0.4);text-align:center;margin-bottom:20px">
+                เข้าสู่ระบบด้วยบัญชีที่ได้รับจาก Admin
+            </p>
+            <input id="login-email" type="email" placeholder="อีเมล"
+                style="width:100%;padding:12px 16px;border:1.5px solid rgba(255,255,255,0.1);border-radius:12px;
+                background:rgba(255,255,255,0.05);color:#fff;font-family:'Sarabun',sans-serif;
+                font-size:0.95rem;outline:none;margin-bottom:12px;box-sizing:border-box">
+            <input id="login-password" type="password" placeholder="รหัสผ่าน"
+                style="width:100%;padding:12px 16px;border:1.5px solid rgba(255,255,255,0.1);border-radius:12px;
+                background:rgba(255,255,255,0.05);color:#fff;font-family:'Sarabun',sans-serif;
+                font-size:0.95rem;outline:none;margin-bottom:16px;box-sizing:border-box">
+            <button onclick="loginWithEmail()"
+                style="width:100%;padding:13px;border:none;border-radius:12px;
+                background:#FFC107;color:#1a1a1a;font-family:'Sarabun',sans-serif;
+                font-size:0.95rem;font-weight:800;cursor:pointer;transition:all 0.2s">
+                เข้าสู่ระบบ
+            </button>
+        </div>
+
+        <div id="login-error" style="color:#ff7070;font-size:0.82rem;text-align:center;margin-top:14px;min-height:20px"></div>
+    </div>
+
+    <div style="margin-top:24px;font-size:0.72rem;color:rgba(255,255,255,0.2);letter-spacing:1px">
+        ENYX × AURIST · HQ SYSTEM
+    </div>
+</div>
+
+<!-- ===== ADMIN PANEL ===== -->
+<div id="admin-panel" style="
+    display:none;position:fixed;inset:0;z-index:9999;
+    background:rgba(0,0,0,0.7);backdrop-filter:blur(6px);
+    font-family:'Sarabun','Prompt',sans-serif;
+    align-items:flex-start;justify-content:center;padding:60px 16px 24px;overflow-y:auto;
+">
+    <div style="background:#111;border:1.5px solid rgba(255,193,7,0.25);border-radius:22px;
+        padding:28px;width:min(560px,100%);box-shadow:0 24px 60px rgba(0,0,0,0.7)">
+
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px">
+            <div>
+                <div style="font-size:0.72rem;letter-spacing:2.5px;color:rgba(255,193,7,0.6);text-transform:uppercase;margin-bottom:4px">Admin Panel</div>
+                <div style="font-size:1.15rem;font-weight:800;color:#fff">จัดการระบบ</div>
+            </div>
+            <button onclick="closeAdminPanel()"
+                style="background:none;border:none;color:#555;font-size:1.5rem;cursor:pointer">✕</button>
+        </div>
+
+        <!-- Online Users -->
+        <div style="margin-bottom:24px">
+            <div style="font-size:0.72rem;letter-spacing:2px;text-transform:uppercase;color:#555;
+                margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,0.07)">
+                ผู้ใช้งานออนไลน์ขณะนี้
+            </div>
+            <div id="admin-online-list">
+                <div style="color:#555;font-size:0.85rem">กำลังโหลด...</div>
+            </div>
+        </div>
+
+        <!-- Create User -->
+        <div style="margin-bottom:24px">
+            <div style="font-size:0.72rem;letter-spacing:2px;text-transform:uppercase;color:#555;
+                margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,0.07)">
+                สร้างบัญชีผู้ใช้งานใหม่
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+                <input id="new-user-name" placeholder="ชื่อผู้ใช้งาน"
+                    style="padding:10px 12px;border-radius:10px;border:1.5px solid rgba(255,255,255,0.1);
+                    background:rgba(255,255,255,0.05);color:#fff;font-family:'Sarabun',sans-serif;font-size:0.88rem;outline:none">
+                <input id="new-user-email" type="email" placeholder="อีเมล"
+                    style="padding:10px 12px;border-radius:10px;border:1.5px solid rgba(255,255,255,0.1);
+                    background:rgba(255,255,255,0.05);color:#fff;font-family:'Sarabun',sans-serif;font-size:0.88rem;outline:none">
+            </div>
+            <div style="display:grid;grid-template-columns:1fr auto;gap:10px">
+                <input id="new-user-password" type="password" placeholder="รหัสผ่านอย่างน้อย 6 ตัว"
+                    style="padding:10px 12px;border-radius:10px;border:1.5px solid rgba(255,255,255,0.1);
+                    background:rgba(255,255,255,0.05);color:#fff;font-family:'Sarabun',sans-serif;font-size:0.88rem;outline:none">
+                <button onclick="adminCreateUser()"
+                    style="padding:10px 18px;border-radius:10px;border:1.5px solid rgba(255,193,7,0.4);
+                    background:rgba(255,193,7,0.1);color:#FFC107;font-family:'Sarabun',sans-serif;
+                    font-size:0.88rem;font-weight:700;cursor:pointer;white-space:nowrap">
+                    + สร้าง
+                </button>
+            </div>
+            <div id="admin-create-msg" style="font-size:0.8rem;margin-top:8px;min-height:18px"></div>
+        </div>
+
+        <!-- User List -->
+        <div>
+            <div style="font-size:0.72rem;letter-spacing:2px;text-transform:uppercase;color:#555;
+                margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,0.07)">
+                บัญชีผู้ใช้งานทั้งหมด
+            </div>
+            <div id="admin-user-list">
+                <div style="color:#555;font-size:0.85rem">กำลังโหลด...</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ===== SYSTEM SWITCHER ===== -->
+<div class="system-switcher" id="main-switcher" style="display:none">
+    <button class="sys-btn home-active" id="btn-home" onclick="switchSystem('home')">&#8962; HOME</button>
+    <div class="sys-divider"></div>
+    <button class="sys-btn" id="btn-enyx" onclick="switchSystem('enyx')">&#9889; ENYX</button>
+    <div class="sys-divider"></div>
+    <button class="sys-btn" id="btn-aurist" onclick="switchSystem('aurist')">&#9835; AURIST</button>
+    <div class="sys-divider"></div>
+    <div class="fb-status">
+        <div id="fb-status-dot"></div>
+        <span id="fb-status-lbl" class="fb-status-lbl-text">กำลังเชื่อมต่อ...</span>
+    </div>
+    <div class="sys-divider"></div>
+    <div style="display:flex;align-items:center;gap:8px;padding:0 12px">
+        <div id="current-user-dot" style="width:8px;height:8px;border-radius:50%;background:#22c55e;flex-shrink:0"></div>
+        <span id="current-user-name" style="font-size:0.75rem;color:rgba(255,255,255,0.5);font-family:'Sarabun',sans-serif;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+        <button id="admin-btn" onclick="openAdminPanel()" style="display:none;padding:4px 10px;border-radius:6px;border:1px solid rgba(255,193,7,0.4);background:rgba(255,193,7,0.08);color:#FFC107;font-size:0.72rem;font-family:'Sarabun',sans-serif;cursor:pointer;font-weight:700">Admin</button>
+        <button onclick="logoutUser()" style="padding:4px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:transparent;color:rgba(255,255,255,0.3);font-size:0.72rem;font-family:'Sarabun',sans-serif;cursor:pointer">ออก</button>
+    </div>
+</div>
+
+<!-- ===== HOME DASHBOARD ===== -->
+<div id="home-wrap" class="system-wrap"><!-- BUG#3 FIX: ลบ class active ออก — initApp() จะเรียก switchSystem() เอง -->
+    <div class="h-container">
+
+        <!-- Header (dark band) -->
+        <div class="h-header" id="h-capture-start">
+            <div class="h-hq-label">HQ COMMAND CENTER</div>
+            <div class="h-title">Sales <span>Overview</span></div>
+            <div class="h-subtitle">ภาพรวมยอดขายรวมทุกระบบ</div>
+            <div class="h-date-badge" id="h-date">—</div>
+            <br>
+            <button class="h-capture-btn" onclick="hCapture()">
+                <svg style="width:14px;height:14px;fill:#FFC107" viewBox="0 0 24 24"><path d="M12 15.2A3.2 3.2 0 0 1 8.8 12 3.2 3.2 0 0 1 12 8.8 3.2 3.2 0 0 1 15.2 12 3.2 3.2 0 0 1 12 15.2M9 2L7.17 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-3.17L15 2H9zm3 15a5 5 0 0 0 5-5 5 5 0 0 0-5-5 5 5 0 0 0-5 5 5 5 0 0 0 5 5z"/></svg>
+                บันทึกรูปสรุป
+            </button>
+            <button id="hq-settings-btn" onclick="hShowSettings()" style="
+                display:inline-flex;align-items:center;gap:6px;
+                margin-top:18px;margin-left:10px;
+                background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.15);
+                color:rgba(255,255,255,0.5);padding:9px 16px;border-radius:30px;
+                font-size:0.85rem;font-weight:600;cursor:pointer;
+                font-family:'Sarabun','Prompt',sans-serif;transition:all 0.2s;
+            ">⚙ ตั้งค่า Session</button>
+        </div>
+
+        <!-- Enter system buttons -->
+        <div class="h-divider" style="margin-top:24px">
+            <div class="h-divider-line"></div>
+            <div class="h-divider-label">เข้าสู่ระบบ</div>
+            <div class="h-divider-line"></div>
+        </div>
+        <div class="h-enter-grid">
+            <div class="h-enter-btn h-enter-btn-enyx" onclick="switchSystem('enyx')">
+                <div>
+                    <div class="h-enter-brand">&#9889; ENYX</div>
+                    <div class="h-enter-sub">BACKSELLER SYSTEM</div>
+                </div>
+                <div style="display:flex;align-items:center">
+                    <div style="text-align:right">
+                        <div class="h-enter-num" style="color:#FFC107" id="h-enyx-total">0</div>
+                        <div class="h-enter-unit">ORDERS TODAY</div>
+                    </div>
+                    <div class="h-enter-arrow">›</div>
+                </div>
+            </div>
+            <div class="h-enter-btn h-enter-btn-aurist" onclick="switchSystem('aurist')">
+                <div>
+                    <div class="h-enter-brand">&#9835; AURIST</div>
+                    <div class="h-enter-sub">DAILY SALES SYSTEM</div>
+                </div>
+                <div style="display:flex;align-items:center">
+                    <div style="text-align:right">
+                        <div class="h-enter-num" style="color:#E5C07B" id="h-aurist-total">0</div>
+                        <div class="h-enter-unit">ORDERS TODAY</div>
+                    </div>
+                    <div class="h-enter-arrow">›</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── CAPTURE ZONE START ── -->
+        <div id="h-capture-zone">
+
+        <!-- Big combined total -->
+        <div class="h-divider">
+            <div class="h-divider-line"></div>
+            <div class="h-divider-label">ยอดรวมทั้งหมด</div>
+            <div class="h-divider-line"></div>
+        </div>
+
+        <div class="h-combined">
+            <div class="h-combined-date" id="h-combined-date">—</div>
+            <div class="h-combined-body">
+                <div>
+                    <div class="h-combined-label">ยอดรวมทั้ง 2 ระบบวันนี้</div>
+                    <div class="h-combined-num" id="h-grand-total">0</div>
+                    <div class="h-combined-sub" id="h-grand-sub">กำลังโหลดข้อมูล...</div>
+                </div>
+                <div class="h-combined-breakdown">
+                    <div class="h-cbd-item">
+                        <div class="h-cbd-val" id="h-e-total-b">0</div>
+                        <div class="h-cbd-label" style="color:#FFC107">&#9889; ENYX</div>
+                    </div>
+                    <div class="h-cbd-item">
+                        <div class="h-cbd-val" id="h-a-total-b">0</div>
+                        <div class="h-cbd-label" style="color:#E5C07B">&#9835; AURIST</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Round status -->
+        <div class="h-divider">
+            <div class="h-divider-line"></div>
+            <div class="h-divider-label">รอบการบันทึก</div>
+            <div class="h-divider-line"></div>
+        </div>
+        <div class="h-rounds-grid" style="margin-bottom:8px" id="h-rounds-grid"></div>
+
+        <!-- Platform breakdown panels -->
+        <div class="h-divider">
+            <div class="h-divider-line"></div>
+            <div class="h-divider-label">ยอดขายแยกช่องทาง</div>
+            <div class="h-divider-line"></div>
+        </div>
+        <div class="h-two-col">
+            <div class="h-panel">
+                <div class="h-panel-header">
+                    <div>
+                        <div class="h-panel-title-text">Platform Breakdown</div>
+                        <div class="h-panel-total">ยอดรวม ENYX<strong id="h-enyx-plat-total">0</strong></div>
+                    </div>
+                    <span class="h-panel-brand" style="color:#FFC107">ENYX</span>
+                </div>
+                <div id="h-enyx-bars"></div>
+            </div>
+            <div class="h-panel">
+                <div class="h-panel-header">
+                    <div>
+                        <div class="h-panel-title-text">Channel Breakdown</div>
+                        <div class="h-panel-total">ยอดรวม AURIST<strong id="h-aurist-chan-total">0</strong></div>
+                    </div>
+                    <span class="h-panel-brand" style="color:#E5C07B">AURIST</span>
+                </div>
+                <div id="h-aurist-bars"></div>
+            </div>
+        </div>
+
+        <!-- Charts -->
+        <div class="h-divider">
+            <div class="h-divider-line"></div>
+            <div class="h-divider-label">กราฟภาพรวม</div>
+            <div class="h-divider-line"></div>
+        </div>
+        <div class="h-two-col">
+            <div class="h-panel">
+                <div class="h-panel-header">
+                    <div class="h-panel-title-text">Volume by Round</div>
+                    <span style="color:#bbb;font-size:0.7rem">ทั้ง 2 ระบบรวม</span>
+                </div>
+                <div class="h-chart-wrap"><canvas id="h-chart-rounds"></canvas></div>
+            </div>
+            <div class="h-panel">
+                <div class="h-panel-header">
+                    <div class="h-panel-title-text">Platform Share</div>
+                    <span style="color:#bbb;font-size:0.7rem">รวมทุกช่องทาง</span>
+                </div>
+                <div class="h-chart-wrap"><canvas id="h-chart-plat"></canvas></div>
+            </div>
+        </div>
+
+        </div><!-- /h-capture-zone -->
+
+        <!-- Mini stats -->
+        <div class="h-divider" style="margin-top:8px">
+            <div class="h-divider-line"></div>
+            <div class="h-divider-label">สถิติประจำวัน</div>
+            <div class="h-divider-line"></div>
+        </div>
+        <div class="h-stat-row" id="h-stat-row"></div>
+        <div class="h-last-update" id="h-last-update">—</div>
+
+    </div>
+</div>
+
+<!-- ===== ENYX SYSTEM ===== -->
+<div id="enyx-wrap" class="system-wrap"><!-- active class ถูกลบออก — switchSystem() จัดการเอง -->
+    <nav class="navbar sticky-top">
+        <div class="container d-flex justify-content-between align-items-center">
+            <div class="d-flex align-items-center">
+                <svg style="width:28px;height:28px;fill:#FFC107;margin-right:8px;flex-shrink:0" viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                <span class="brand-logo">ENYX BACKSELLER</span>
+            </div>
+            <div class="text-end">
+                <div class="fw-bold" id="e-currentDateNav"></div>
+                <small class="text-muted" style="font-size:0.75rem;">ระบบจัดการหลังบ้าน</small>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container py-4">
+        <ul class="custom-nav">
+            <li><div class="custom-tab-btn active" onclick="eSwitchPage('e-page-dashboard',this)"><svg style="width:15px;height:15px;fill:currentColor;margin-right:7px;vertical-align:-1px" viewBox="0 0 24 24"><path d="M3.5 18.49l6-6.01 4 4L22 6.92l-1.41-1.41-7.09 7.97-4-4L2 16.99l1.5 1.5z"/></svg>DASHBOARD</div></li>
+            <li><div class="custom-tab-btn" onclick="eSwitchPage('e-page-recording',this)"><svg style="width:15px;height:15px;fill:currentColor;margin-right:7px;vertical-align:-1px" viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>RECORDING</div></li>
+        </ul>
+
+        <!-- Dashboard -->
+        <div id="e-page-dashboard" class="page-content active">
+            <div class="row g-4">
+                <div class="col-md-4">
+                    <div class="card-modern d-flex flex-column justify-content-center align-items-center text-center" style="height:100%">
+                        <div class="stat-label mb-2">ยอดออเดอร์รวมวันนี้</div>
+                        <div class="stat-value" id="e-dashTotalOrders">0</div>
+                        <div class="mt-3 badge bg-light text-dark px-3 py-2 rounded-pill"><svg style="width:13px;height:13px;fill:currentColor;margin-right:4px;vertical-align:-1px" viewBox="0 0 24 24"><path d="M19 3h-1V1h-2v2H8V1H6v2H5a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2zm0 18H5V9h14v12zm0-14H5V5h14v2zM9 13H7v-2h2v2zm4 0h-2v-2h2v2zm4 0h-2v-2h2v2zm-8 4H7v-2h2v2zm4 0h-2v-2h2v2zm4 0h-2v-2h2v2z"/></svg><span id="e-dashDate"></span></div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card-modern" style="height:100%">
+                        <h6 class="fw-bold mb-3 small text-muted">PLATFORM SHARE</h6>
+                        <div style="height:200px;position:relative"><canvas id="e-chartPlatform"></canvas></div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card-modern" style="height:100%">
+                        <h6 class="fw-bold mb-3 small text-muted">ROUND VOLUME</h6>
+                        <div style="height:200px;position:relative"><canvas id="e-chartRounds"></canvas></div>
+                    </div>
+                </div>
+            </div>
+            <div class="card-modern mt-4 py-3 px-4">
+                <div class="d-flex justify-content-between align-items-center">
+                    <span class="text-muted fw-bold small">CHECKLIST STATUS</span>
+                    <div class="d-flex gap-4">
+                        <div id="e-st-morning" class="text-muted opacity-50"><svg style="width:14px;height:14px;fill:currentColor;vertical-align:-1px" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5l-4-4 1.41-1.41L10 13.67l6.59-6.59L18 8.5l-8 8z"/></svg> เช้า</div>
+                        <div id="e-st-noon"    class="text-muted opacity-50"><svg style="width:14px;height:14px;fill:currentColor;vertical-align:-1px" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5l-4-4 1.41-1.41L10 13.67l6.59-6.59L18 8.5l-8 8z"/></svg> เที่ยง</div>
+                        <div id="e-st-afternoon" class="text-muted opacity-50"><svg style="width:14px;height:14px;fill:currentColor;vertical-align:-1px" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5l-4-4 1.41-1.41L10 13.67l6.59-6.59L18 8.5l-8 8z"/></svg> บ่าย</div>
+                        <div id="e-st-evening" class="text-muted opacity-50"><svg style="width:14px;height:14px;fill:currentColor;vertical-align:-1px" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5l-4-4 1.41-1.41L10 13.67l6.59-6.59L18 8.5l-8 8z"/></svg> เย็น</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recording -->
+        <div id="e-page-recording" class="page-content">
+            <div class="row justify-content-center">
+                <div class="col-lg-6">
+                    <div class="card-modern mb-4">
+                        <h5 class="fw-bold mb-3">บันทึกยอดประจำรอบ</h5>
+                        <form id="e-tallyForm">
+                            <div class="round-selector">
+                                <input type="radio" name="e-round" id="e-r1" value="morning" class="round-input" checked>
+                                <label for="e-r1" class="round-option">เช้า</label>
+                                <input type="radio" name="e-round" id="e-r2" value="noon" class="round-input">
+                                <label for="e-r2" class="round-option">เที่ยง</label>
+                                <input type="radio" name="e-round" id="e-r3" value="afternoon" class="round-input">
+                                <label for="e-r3" class="round-option">บ่าย</label>
+                                <input type="radio" name="e-round" id="e-r4" value="evening" class="round-input">
+                                <label for="e-r4" class="round-option">เย็น</label>
+                            </div>
+                            <div class="mb-3">
+                                <div class="small text-muted fw-bold mb-2">SHOPEE GROUP</div>
+                                <div class="form-label-group"><div class="plat-tag"><div class="plat-dot dot-shopee"></div>SPX Pick UP</div><input type="number" id="e-v_spx_pickup" class="input-modern" placeholder="0" min="0"></div>
+                                <div class="form-label-group"><div class="plat-tag"><div class="plat-dot dot-shopee"></div>Express Delivery (SHP FOOD)</div><input type="number" id="e-v_shp_food" class="input-modern" placeholder="0" min="0"></div>
+                                <div class="form-label-group"><div class="plat-tag"><div class="plat-dot dot-shopee"></div>Express Delivery (SPX)</div><input type="number" id="e-v_spx_express" class="input-modern" placeholder="0" min="0"></div>
+                                <div class="form-label-group"><div class="plat-tag"><div class="plat-dot dot-shopee"></div>SPX ทันที</div><input type="number" id="e-v_spx_instant" class="input-modern" placeholder="0" min="0"></div>
+                                <div class="form-label-group"><div class="plat-tag"><div class="plat-dot dot-shopee"></div>Shopee Advance Fulfilment</div><input type="number" id="e-v_shopee_fulfill" class="input-modern" placeholder="0" min="0"></div>
+                            </div>
+                            <hr class="text-muted opacity-25 my-3">
+                            <div class="mb-4">
+                                <div class="small text-muted fw-bold mb-2">OTHERS</div>
+                                <div class="form-label-group"><div class="plat-tag"><div class="plat-dot dot-tiktok"></div>TikTok Shop</div><input type="number" id="e-v_tiktok" class="input-modern" placeholder="0" min="0"></div>
+                                <div class="form-label-group"><div class="plat-tag"><div class="plat-dot dot-lazada"></div>Lazada</div><input type="number" id="e-v_lazada" class="input-modern" placeholder="0" min="0"></div>
+                                <div class="form-label-group"><div class="plat-tag"><div class="plat-dot dot-amaze"></div>Amaze</div><input type="number" id="e-v_amaze" class="input-modern" placeholder="0" min="0"></div>
+                                <div class="form-label-group"><div class="plat-tag"><div class="plat-dot dot-homepro"></div>HomePro</div><input type="number" id="e-v_homepro" class="input-modern" placeholder="0" min="0"></div>
+                            </div>
+                            <button type="button" id="e-btn-save" class="btn btn-warning w-100 py-3 fw-bold rounded-3 shadow-sm text-white" style="background:linear-gradient(135deg,#FFC107,#FF9800);border:none;" onclick="eSaveRound()">บันทึกยอดรวม (0) (Save Data)</button>
+                        </form>
+                    </div>
+                    <div id="e-summaryArea"></div>
+                    <div class="text-center mt-5 mb-5">
+                        <button class="btn btn-outline-danger btn-sm rounded-pill px-4" onclick="eResetDay()"><svg style="width:14px;height:14px;fill:currentColor;margin-right:7px;vertical-align:-1px" viewBox="0 0 24 24"><path d="M9 3v1H4v2h1v13a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V6h1V4h-5V3H9zm0 5h2v9H9V8zm4 0h2v9h-2V8z"/></svg>ล้างข้อมูลวันนี้</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div><!-- /enyx-wrap -->
+
+<!-- ===== AURIST SYSTEM ===== -->
+<div id="aurist-wrap" class="system-wrap">
+    <div class="aurist-orb aurist-orb-gold"></div>
+    <div class="aurist-orb aurist-orb-blue"></div>
+
+    <div class="a-container">
+        <div class="a-header">
+            <div class="shop-name">AURIS<span>T</span></div>
+            <h1>Daily Sales Dashboard</h1>
+            <div class="date-display" id="a-currentDate">กำลังโหลด...</div>
+        </div>
+
+        <div class="a-toolbar">
+            <button class="a-btn a-btn-danger" onclick="aResetDay()">ล้างข้อมูล</button>
+            <button class="a-btn a-btn-gold" onclick="aCopyReport()">คัดลอกรายงาน</button>
+        </div>
+
+        <!-- Checklist bar -->
+        <div class="a-checklist-bar">
+            <div class="a-cl-label">Checklist Status</div>
+            <div class="a-cl-dots">
+                <div class="a-cl-item" id="a-st-morning"><svg style="width:14px;height:14px;fill:currentColor;vertical-align:-1px" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5l-4-4 1.41-1.41L10 13.67l6.59-6.59L18 8.5l-8 8z"/></svg> เช้า</div>
+                <div class="a-cl-item" id="a-st-noon"><svg style="width:14px;height:14px;fill:currentColor;vertical-align:-1px" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5l-4-4 1.41-1.41L10 13.67l6.59-6.59L18 8.5l-8 8z"/></svg> เที่ยง</div>
+                <div class="a-cl-item" id="a-st-afternoon"><svg style="width:14px;height:14px;fill:currentColor;vertical-align:-1px" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5l-4-4 1.41-1.41L10 13.67l6.59-6.59L18 8.5l-8 8z"/></svg> บ่าย</div>
+                <div class="a-cl-item" id="a-st-evening"><svg style="width:14px;height:14px;fill:currentColor;vertical-align:-1px" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5l-4-4 1.41-1.41L10 13.67l6.59-6.59L18 8.5l-8 8z"/></svg> เย็น</div>
+            </div>
+        </div>
+
+        <!-- Round selector -->
+        <div class="a-round-selector">
+            <input type="radio" name="a-round" id="a-r1" value="morning" class="a-round-input" checked>
+            <label for="a-r1" class="a-round-option">เช้า</label>
+            <input type="radio" name="a-round" id="a-r2" value="noon" class="a-round-input">
+            <label for="a-r2" class="a-round-option">เที่ยง</label>
+            <input type="radio" name="a-round" id="a-r3" value="afternoon" class="a-round-input">
+            <label for="a-r3" class="a-round-option">บ่าย</label>
+            <input type="radio" name="a-round" id="a-r4" value="evening" class="a-round-input">
+            <label for="a-r4" class="a-round-option">เย็น</label>
+        </div>
+
+        <!-- Input card -->
+        <div class="a-round-card" id="a-inputCard">
+            <div class="a-section-label">Shopee Group</div>
+            <div class="a-input-row"><label class="a-input-label"><span class="a-plat-dot" style="background:#ee4d2d"></span>SPX Pick UP</label><input type="number" id="a-v_spx_pickup" class="a-input-field" placeholder="0" min="0" data-key="spx_pickup"></div>
+            <div class="a-input-row"><label class="a-input-label"><span class="a-plat-dot" style="background:#ee4d2d"></span>Express Delivery (SHP FOOD)</label><input type="number" id="a-v_shp_food" class="a-input-field" placeholder="0" min="0" data-key="shp_food"></div>
+            <div class="a-input-row"><label class="a-input-label"><span class="a-plat-dot" style="background:#ee4d2d"></span>Express Delivery (SPX)</label><input type="number" id="a-v_spx_express" class="a-input-field" placeholder="0" min="0" data-key="spx_express"></div>
+            <div class="a-input-row"><label class="a-input-label"><span class="a-plat-dot" style="background:#ee4d2d"></span>SPX ทันที</label><input type="number" id="a-v_spx_instant" class="a-input-field" placeholder="0" min="0" data-key="spx_instant"></div>
+            <div class="a-input-row"><label class="a-input-label"><span class="a-plat-dot" style="background:#ee4d2d"></span>Shopee Advance Fulfilment</label><input type="number" id="a-v_shopee_fulfill" class="a-input-field" placeholder="0" min="0" data-key="shopee_fulfill"></div>
+            <div class="a-section-divider"></div>
+            <div class="a-section-label">Others</div>
+            <div class="a-input-row"><label class="a-input-label"><span class="a-plat-dot" style="background:#000"></span>TikTok Shop</label><input type="number" id="a-v_tiktok" class="a-input-field" placeholder="0" min="0" data-key="tiktok"></div>
+            <div class="a-input-row"><label class="a-input-label"><span class="a-plat-dot" style="background:#0f146d"></span>Lazada</label><input type="number" id="a-v_lazada" class="a-input-field" placeholder="0" min="0" data-key="lazada"></div>
+            <div class="a-input-row"><label class="a-input-label"><span class="a-plat-dot" style="background:#007bff"></span>Amaze</label><input type="number" id="a-v_amaze" class="a-input-field" placeholder="0" min="0" data-key="amaze"></div>
+            <div class="a-input-row"><label class="a-input-label"><span class="a-plat-dot" style="background:#0dcaf0"></span>HomePro</label><input type="number" id="a-v_homepro" class="a-input-field" placeholder="0" min="0" data-key="homepro"></div>
+            <button class="a-save-btn" id="a-btn-save" onclick="aSaveRound()">บันทึกยอดรวม (0) (Save Data)</button>
+        </div>
+
+        <!-- Summary Area -->
+        <div class="a-summary-section" id="a-summaryArea"></div>
+
+        <!-- Dashboard metrics -->
+        <div id="a-dashSection">
+            <div class="a-dash-divider"><div class="a-dash-line"></div><div class="a-dash-label">รายละเอียดเพิ่มเติม</div><div class="a-dash-line"></div></div>
+            <div class="a-metric-row">
+                <div class="a-metric-card"><div class="a-metric-label">ยอดรวมวันนี้</div><div class="a-metric-value" id="a-d-grand">0</div><div class="a-metric-sub">ออเดอร์</div></div>
+                <div class="a-metric-card"><div class="a-metric-label">รอบที่ดีที่สุด</div><div class="a-metric-value" id="a-d-top-period" style="font-size:0.95rem">—</div><div class="a-metric-sub" id="a-d-top-period-val">—</div></div>
+                <div class="a-metric-card"><div class="a-metric-label">ช่องทางนำ</div><div class="a-metric-value" id="a-d-top-logic" style="font-size:0.8rem;line-height:1.4">—</div><div class="a-metric-sub" id="a-d-top-logic-val">—</div></div>
+            </div>
+            <div class="a-bar-panel">
+                <div class="a-bar-panel-title">ยอดขายแยกตามช่องทาง</div>
+                <div id="a-logicBars"></div>
+            </div>
+            <div class="a-save-indicator" id="a-saveIndicator">บันทึกอัตโนมัติทุกครั้งที่แก้ไข</div>
+        </div>
+
+        <button class="a-reset-btn" onclick="aResetDay()"><svg style="width:14px;height:14px;fill:currentColor;margin-right:7px;vertical-align:-1px" viewBox="0 0 24 24"><path d="M9 3v1H4v2h1v13a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V6h1V4h-5V3H9zm0 5h2v9H9V8zm4 0h2v9h-2V8z"/></svg>ล้างข้อมูลวันนี้</button>
+        <div style="height:40px"></div>
+    </div><!-- /a-container -->
+
+    <div class="a-sticky-total">
+        <div class="a-total-wrapper">
+            <span class="a-total-label">ยอดรวมทั้งหมด</span>
+            <span class="a-total-amount" id="a-grandTotal">0</span>
+        </div>
+    </div>
+</div><!-- /aurist-wrap -->
+
+<div class="a-toast" id="a-toast"></div>
+
+<!-- ===================================================
+     JAVASCRIPT
+=================================================== -->
+<script>
+// ─── SYSTEM SWITCHER ─────────────────────────────────
+function switchSystem(sys) {
+    ['home','enyx','aurist'].forEach(s => {
+        const wrap = document.getElementById(s + '-wrap');
+        if(wrap) wrap.classList.toggle('active', s === sys);
+    });
+    document.getElementById('btn-home').className   = 'sys-btn' + (sys==='home'   ? ' home-active'   : '');
+    document.getElementById('btn-enyx').className   = 'sys-btn' + (sys==='enyx'   ? ' enyx-active'   : '');
+    document.getElementById('btn-aurist').className = 'sys-btn' + (sys==='aurist' ? ' aurist-active' : '');
+    if(sys === 'aurist') {
+        document.getElementById('aurist-wrap').classList.add('active-system');
+    } else {
+        document.getElementById('aurist-wrap').classList.remove('active-system');
+    }
+    if(sys === 'home') hRefreshDashboard();
+    localStorage.setItem('last_system', sys);
+}
+
+// ─── UTILITY: html2canvas capture ────────────────────
+function captureElement(elementId, filenamePrefix) {
+    if(!window.html2canvas) { alert('ระบบบันทึกรูปยังไม่พร้อม'); return; }
+    const el = document.getElementById(elementId);
+    const btns = el.querySelectorAll('.btn-capture, .a-btn-capture');
+    btns.forEach(b => b.style.display = 'none');
+    html2canvas(el, { scale: 2, useCORS: true, backgroundColor: '#ffffff' }).then(canvas => {
+        const link = document.createElement('a');
+        link.download = `${filenamePrefix}-${Date.now()}.png`;
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+        btns.forEach(b => b.style.display = '');
+    }).catch(err => {
+        console.error(err); alert('เกิดข้อผิดพลาดในการบันทึกภาพ');
+        btns.forEach(b => b.style.display = '');
+    });
+}
+
+function getThaiDate() {
+    return new Date().toLocaleDateString('th-TH', { year:'numeric', month:'long', day:'numeric', weekday:'long' });
+}
+function getShortDate() {
+    return new Date().toLocaleDateString('th-TH');
+}
+
+// ═══════════════════════════════════════════════════════
+//   ENYX
+// ═══════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════
+//   FIREBASE CONFIG & INIT
+// ═══════════════════════════════════════════════════════
+const FB_CONFIG = {
+    apiKey:            "AIzaSyDhDng8xpw2TBygLmxg_or0FpfT-FuXpdA",
+    authDomain:        "hq-dashboard-10409.firebaseapp.com",
+    databaseURL:       "https://hq-dashboard-10409-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId:         "hq-dashboard-10409",
+    storageBucket:     "hq-dashboard-10409.firebasestorage.app",
+    messagingSenderId: "1007426868180",
+    appId:             "1:1007426868180:web:76c0d223011359db6abc41",
+};
+/*
+ * ⚠️ BUG#10 SECURITY: Firebase Realtime Database Rules ยังเป็น Test Mode
+ * ต้องเข้าไปแก้ที่ Firebase Console → Realtime Database → Rules
+ * แทนที่ด้วย Rules ดังนี้:
+ *
+ * {
+ *   "rules": {
+ *     "enyx": {
+ *       "$date": {
+ *         ".read":  "auth != null",
+ *         ".write": "auth != null"
+ *       }
+ *     },
+ *     "aurist": {
+ *       "$date": {
+ *         ".read":  "auth != null",
+ *         ".write": "auth != null"
+ *       }
+ *     },
+ *     "presence": {
+ *       "$uid": {
+ *         ".read":  "auth != null",
+ *         ".write": "auth != null && auth.uid === $uid"
+ *       }
+ *     },
+ *     "users": {
+ *       ".read":  "auth != null",
+ *       "$uid": {
+ *         ".write": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'admin')"
+ *       }
+ *     },
+ *     "session": {
+ *       ".read":  "auth != null",
+ *       ".write": "auth != null"
+ *     }
+ *   }
+ * }
+ */
+firebase.initializeApp(FB_CONFIG);
+const db   = firebase.database();
+const auth = firebase.auth();
+
+// ── Config ──
+const ADMIN_EMAIL    = 'kritforwork.enyx@gmail.com';
+const SHEETS_API_URL = 'https://script.google.com/macros/s/AKfycbwwEVayMAzkNse2QdO8loIE6ThVe30nn66_DgnOkDCJsteJCAdx6WUkrfOq-EGDYB5pJg/exec';
+
+// ── Current user state ──
+let currentUser  = null;
+let isAdmin      = false;
+let presenceRef  = null;
+
+// ── Date key ──
+function getTodayKey() { return new Date().toISOString().slice(0,10); }
+
+// ── Online status indicator ──
+let fbOnline = false;
+db.ref('.info/connected').on('value', snap => {
+    fbOnline = snap.val() === true;
+    const dot = document.getElementById('fb-status-dot');
+    const lbl = document.getElementById('fb-status-lbl');
+    if(dot) dot.style.background = fbOnline ? '#22c55e' : '#f97316';
+    if(lbl) lbl.textContent      = fbOnline ? 'Online · Sync' : 'Offline · Local';
+    // update presence
+    if(fbOnline && currentUser && presenceRef) {
+        presenceRef.onDisconnect().remove();
+        presenceRef.set({
+            name:    currentUser.displayName || currentUser.email,
+            email:   currentUser.email,
+            online:  true,
+            loginAt: Date.now(),
+        });
+    }
+});
+
+// ════════════════════════════════════════
+//   AUTH FUNCTIONS
+// ════════════════════════════════════════
+function loginTabSwitch(tab) {
+    const gPanel = document.getElementById('login-google-panel');
+    const uPanel = document.getElementById('login-user-panel');
+    const tG     = document.getElementById('tab-google');
+    const tU     = document.getElementById('tab-user');
+    if(tab === 'google') {
+        gPanel.style.display = '';
+        uPanel.style.display = 'none';
+        tG.style.background  = '#FFC107';
+        tG.style.color       = '#1a1a1a';
+        tU.style.background  = 'transparent';
+        tU.style.color       = 'rgba(255,255,255,0.4)';
+    } else {
+        gPanel.style.display = 'none';
+        uPanel.style.display = '';
+        tU.style.background  = '#FFC107';
+        tU.style.color       = '#1a1a1a';
+        tG.style.background  = 'transparent';
+        tG.style.color       = 'rgba(255,255,255,0.4)';
+    }
+    document.getElementById('login-error').textContent = '';
+}
+
+function loginWithGoogle() {
+    const provider = new firebase.auth.GoogleAuthProvider();
+    auth.signInWithPopup(provider).catch(err => {
+        document.getElementById('login-error').textContent = 'เข้าสู่ระบบไม่สำเร็จ: ' + err.message;
+    });
+}
+
+function loginWithEmail() {
+    const email = document.getElementById('login-email').value.trim();
+    const pass  = document.getElementById('login-password').value;
+    if(!email || !pass) {
+        document.getElementById('login-error').textContent = 'กรุณากรอกอีเมลและรหัสผ่าน';
+        return;
+    }
+    auth.signInWithEmailAndPassword(email, pass).catch(err => {
+        let msg = 'เข้าสู่ระบบไม่สำเร็จ';
+        if(err.code === 'auth/user-not-found') msg = 'ไม่พบบัญชีนี้';
+        if(err.code === 'auth/wrong-password')  msg = 'รหัสผ่านไม่ถูกต้อง';
+        if(err.code === 'auth/invalid-email')   msg = 'รูปแบบอีเมลไม่ถูกต้อง';
+        document.getElementById('login-error').textContent = msg;
+    });
+}
+
+function logoutUser() {
+    if(!confirm('ออกจากระบบ?')) return;
+    if(presenceRef) presenceRef.remove();
+    auth.signOut();
+}
+
+// ── Auth state observer ──
+auth.onAuthStateChanged(user => {
+    if(user) {
+        // ตรวจสอบ admin
+        if(user.providerData[0]?.providerId === 'google.com' && user.email !== ADMIN_EMAIL) {
+            auth.signOut();
+            document.getElementById('login-error').textContent = 'Google Account นี้ไม่มีสิทธิ์เข้าระบบ';
+            return;
+        }
+
+        currentUser = user;
+        isAdmin     = user.email === ADMIN_EMAIL;
+
+        // ซ่อน login, แสดง UI หลัก
+        document.getElementById('login-screen').style.display    = 'none';
+        document.getElementById('main-switcher').style.display   = 'flex';
+
+        // แสดงชื่อ + admin btn
+        const nameEl = document.getElementById('current-user-name');
+        if(nameEl) nameEl.textContent = user.displayName || user.email.split('@')[0];
+        const adminBtn = document.getElementById('admin-btn');
+        if(adminBtn) adminBtn.style.display = isAdmin ? '' : 'none';
+
+        // Presence
+        presenceRef = db.ref('presence/' + user.uid);
+        presenceRef.onDisconnect().remove();
+        presenceRef.set({
+            name:    user.displayName || user.email,
+            email:   user.email,
+            online:  true,
+            loginAt: Date.now(),
+        });
+
+        // บันทึก user ใน /users node (สำหรับ admin ดู)
+        db.ref('users/' + user.uid).update({
+            name:      user.displayName || user.email.split('@')[0],
+            email:     user.email,
+            role:      isAdmin ? 'admin' : 'user',
+            lastSeen:  Date.now(),
+        });
+
+        // init ระบบ
+        initApp();
+
+    } else {
+        currentUser      = null;
+        isAdmin          = false;
+        appInitialized   = false; // BUG#2 FIX: reset เพื่อให้ initApp() ทำงานได้อีกครั้งหลัง login ใหม่
+        document.getElementById('login-screen').style.display   = 'flex';
+        document.getElementById('main-switcher').style.display  = 'none';
+        // ซ่อน content ทั้งหมด
+        document.querySelectorAll('.system-wrap').forEach(w => {
+            w.style.display = 'none';
+        });
+    }
+});
+
+// ── Admin: เปิด/ปิด panel ──
+function openAdminPanel() {
+    if(!isAdmin) return;
+    const panel = document.getElementById('admin-panel');
+    panel.style.display = 'flex';
+    adminLoadOnlineUsers();
+    adminLoadUserList();
+}
+function closeAdminPanel() {
+    document.getElementById('admin-panel').style.display = 'none';
+}
+
+// ── Admin: ดู online users ──
+function adminLoadOnlineUsers() {
+    db.ref('presence').on('value', snap => {
+        const el = document.getElementById('admin-online-list');
+        if(!el) return;
+        const val = snap.val();
+        if(!val || Object.keys(val).length === 0) {
+            el.innerHTML = '<div style="color:#555;font-size:0.85rem">ไม่มีผู้ใช้งานออนไลน์</div>';
+            return;
+        }
+        el.innerHTML = Object.values(val).map(u => `
+            <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;
+                border-radius:10px;background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.15);margin-bottom:8px">
+                <div style="width:8px;height:8px;border-radius:50%;background:#22c55e;flex-shrink:0"></div>
+                <div>
+                    <div style="font-size:0.88rem;color:#fff;font-weight:700">${u.name}</div>
+                    <div style="font-size:0.75rem;color:#555">${u.email}</div>
+                </div>
+            </div>
+        `).join('');
+    });
+}
+
+// ── Admin: โหลด user list ──
+function adminLoadUserList() {
+    db.ref('users').once('value', snap => {
+        const el = document.getElementById('admin-user-list');
+        if(!el) return;
+        const val = snap.val();
+        if(!val) { el.innerHTML = '<div style="color:#555;font-size:0.85rem">ยังไม่มีผู้ใช้งาน</div>'; return; }
+        el.innerHTML = Object.entries(val).map(([uid, u]) => `
+            <div style="display:flex;justify-content:space-between;align-items:center;
+                padding:10px 12px;border-radius:10px;background:rgba(255,255,255,0.03);
+                border:1px solid rgba(255,255,255,0.06);margin-bottom:8px">
+                <div>
+                    <div style="font-size:0.88rem;color:#ddd;font-weight:600">${u.name}
+                        ${u.role==='admin' ? '<span style="font-size:0.7rem;color:#FFC107;margin-left:6px;background:rgba(255,193,7,0.1);padding:2px 8px;border-radius:20px;border:1px solid rgba(255,193,7,0.3)">Admin</span>' : ''}
+                    </div>
+                    <div style="font-size:0.75rem;color:#555">${u.email}</div>
+                </div>
+                ${u.role !== 'admin' ? `<button onclick="adminDeleteUser('${uid}','${u.email}')"
+                    style="padding:5px 12px;border-radius:8px;border:1px solid rgba(255,80,80,0.3);
+                    background:rgba(255,80,80,0.07);color:#ff7070;font-size:0.78rem;cursor:pointer;
+                    font-family:'Sarabun',sans-serif">ลบ</button>` : ''}
+            </div>
+        `).join('');
+    });
+}
+
+// ── Admin: สร้าง user ──
+function adminCreateUser() {
+    const name  = document.getElementById('new-user-name').value.trim();
+    const email = document.getElementById('new-user-email').value.trim();
+    const pass  = document.getElementById('new-user-password').value;
+    const msgEl = document.getElementById('admin-create-msg');
+    if(!name || !email || !pass) { msgEl.style.color='#ff7070'; msgEl.textContent='กรุณากรอกข้อมูลให้ครบ'; return; }
+    if(pass.length < 6) { msgEl.style.color='#ff7070'; msgEl.textContent='รหัสผ่านต้องมีอย่างน้อย 6 ตัว'; return; }
+
+    // สร้างด้วย secondary auth instance เพื่อไม่ logout admin
+    const secondaryApp = firebase.initializeApp(FB_CONFIG, 'secondary_' + Date.now());
+    const secondaryAuth = secondaryApp.auth();
+    secondaryAuth.createUserWithEmailAndPassword(email, pass).then(cred => {
+        return cred.user.updateProfile({ displayName: name }).then(() => {
+            return db.ref('users/' + cred.user.uid).set({
+                name, email, role: 'user', createdAt: Date.now(), lastSeen: Date.now()
+            });
+        });
+    }).then(() => {
+        msgEl.style.color = '#22c55e';
+        msgEl.textContent = `สร้างบัญชี "${name}" สำเร็จ`;
+        document.getElementById('new-user-name').value     = '';
+        document.getElementById('new-user-email').value    = '';
+        document.getElementById('new-user-password').value = '';
+        secondaryAuth.signOut();
+        adminLoadUserList();
+    }).catch(err => {
+        msgEl.style.color = '#ff7070';
+        let msg = 'เกิดข้อผิดพลาด: ' + err.message;
+        if(err.code === 'auth/email-already-in-use') msg = 'อีเมลนี้ถูกใช้งานแล้ว';
+        msgEl.textContent = msg;
+    });
+}
+
+// ── Admin: ลบ user ──
+function adminDeleteUser(uid, email) {
+    if(!confirm(`ลบบัญชี ${email} ออกจากระบบ?`)) return;
+    db.ref('users/' + uid).remove().then(() => {
+        adminLoadUserList();
+    });
+}
+
+// ════════════════════════════════════════
+//   GOOGLE SHEETS INTEGRATION
+// ════════════════════════════════════════
+// BUG#4 FIX: เปลี่ยนจาก no-cors เป็น cors เพื่อให้รับ response ได้
+// หมายเหตุ: Google Apps Script ต้องเปิด CORS (doPost ต้อง return ContentService)
+function pushToSheets(shop, data, session) {
+    const payload = { shop, data, session: session || '' };
+    fetch(SHEETS_API_URL, {
+        method: 'POST',
+        // mode: 'no-cors' ถูกลบออก — ใช้ cors ปกติเพื่อตรวจสอบ response
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // Apps Script รับ text/plain ได้โดยไม่ต้อง preflight
+        body: JSON.stringify(payload),
+    }).then(res => {
+        if(!res.ok) throw new Error('HTTP ' + res.status);
+        console.log('Sheets: ส่งข้อมูล ' + shop + ' สำเร็จ');
+    }).catch(err => {
+        console.warn('Sheets error:', err);
+        // แจ้งเตือน user เมื่อส่งไม่สำเร็จ
+        hShowToast('⚠ Sheets: ส่งข้อมูลไม่สำเร็จ (' + shop + ') — ' + err.message, true);
+    });
+}
+
+// ── เรียกตอนกด hCapture ──
+function pushAllToSheets() {
+    const session = hSession ? hSession.label : getTodayKey();
+    if(eData) pushToSheets('ENYX',   eData, session);
+    if(aData) pushToSheets('AURIST', aData, session);
+}
+
+// ═══════════════════════════════════════════════════════
+//   ENYX DATA LAYER  (Firebase + localStorage fallback)
+// ═══════════════════════════════════════════════════════
+const E_KEY = 'enyx_exec_v2_' + getTodayKey();
+let eData = JSON.parse(localStorage.getItem(E_KEY)) || eInitData();
+
+// อ่านจาก Firebase ครั้งแรก + subscribe realtime
+function eSubscribeFirebase() {
+    const ref = db.ref('enyx/' + getTodayKey());
+    ref.on('value', snap => {
+        const val = snap.val();
+        if(val) {
+            eData = val;
+            localStorage.setItem(E_KEY, JSON.stringify(eData));
+            eLoadRoundData();
+            eRenderSummary();
+            eUpdateDashboard();
+            hRefreshDashboard();
+        }
+    });
+}
+
+function eSave() {
+    localStorage.setItem(E_KEY, JSON.stringify(eData));
+    // sync ขึ้น Firebase
+    db.ref('enyx/' + getTodayKey()).set(eData).catch(err => console.warn('FB write err:', err));
+}
+let eChartP = null, eChartR = null;
+
+function eInitData() { return { date: getShortDate(), morning:null, noon:null, afternoon:null, evening:null }; }
+
+function eSwitchPage(pageId, btn) {
+    document.querySelectorAll('#enyx-wrap .page-content').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('#enyx-wrap .custom-tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById(pageId).classList.add('active');
+    btn.classList.add('active');
+}
+
+function _eSaveOld() { /* superseded */ }
+
+function eGetInputs() { return document.querySelectorAll('#e-tallyForm input[type="number"]'); }
+
+function eUpdateRealtimeTotal() {
+    let sum = 0;
+    eGetInputs().forEach(inp => {
+        let v = parseInt(inp.value);
+        if(v < 0){ inp.value = 0; v = 0; }
+        sum += (v || 0);
+    });
+    document.getElementById('e-btn-save').innerHTML = `บันทึกยอดรวม (${sum}) (Save Data)`;
+}
+
+function eLoadRoundData() {
+    const r = document.querySelector('input[name="e-round"]:checked').value;
+    const d = eData[r];
+    const fields = ['spx_pickup','shp_food','spx_express','spx_instant','shopee_fulfill','tiktok','lazada','amaze','homepro'];
+    fields.forEach(f => {
+        const el = document.getElementById('e-v_' + f);
+        if(el) el.value = d ? (d[f] || '') : '';
+    });
+    eUpdateRealtimeTotal();
+}
+
+function eSaveRound() {
+    const r = document.querySelector('input[name="e-round"]:checked').value;
+    eData[r] = {
+        spx_pickup:    +document.getElementById('e-v_spx_pickup').value    || 0,
+        shp_food:      +document.getElementById('e-v_shp_food').value      || 0,
+        spx_express:   +document.getElementById('e-v_spx_express').value   || 0,
+        spx_instant:   +document.getElementById('e-v_spx_instant').value   || 0,
+        shopee_fulfill:+document.getElementById('e-v_shopee_fulfill').value || 0,
+        tiktok:  +document.getElementById('e-v_tiktok').value  || 0,
+        lazada:  +document.getElementById('e-v_lazada').value  || 0,
+        amaze:   +document.getElementById('e-v_amaze').value   || 0,
+        homepro: +document.getElementById('e-v_homepro').value || 0
+    };
+    eData.date = getShortDate();
+    eSave();
+    document.getElementById('e-v_spx_pickup').focus();
+    eRenderSummary();
+    alert(`บันทึกข้อมูลรอบ "${r}" เรียบร้อยแล้ว`);
+}
+
+function eRenderSummary() {
+    const area = document.getElementById('e-summaryArea');
+    area.innerHTML = '';
+    const titles  = { morning:'รอบเช้า', noon:'รอบเที่ยง', afternoon:'รอบบ่าย', evening:'รอบเย็น' };
+    const badges  = { morning:'bg-info',  noon:'bg-danger',  afternoon:'bg-warning', evening:'bg-dark' };
+
+    ['morning','noon','afternoon','evening'].forEach(key => {
+        if(!eData[key]) return;
+        const d = eData[key];
+        const hp = d.homepro || 0;
+        const shopeeT = d.spx_pickup + (d.shp_food||0) + d.spx_express + d.spx_instant + d.shopee_fulfill;
+        const total   = shopeeT + d.tiktok + d.lazada + d.amaze + hp;
+        const cardId  = `e-card-${key}`;
+
+        area.innerHTML += `
+        <div class="card-modern mt-4" id="${cardId}">
+            <div class="d-flex justify-content-between align-items-start mb-2">
+                <div>
+                    <div class="summary-date-badge"><svg style="width:13px;height:13px;fill:currentColor;margin-right:4px;vertical-align:-1px" viewBox="0 0 24 24"><path d="M19 3h-1V1h-2v2H8V1H6v2H5a2 2 0 0 0-2 2v16c0 1.1.9 2 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2zm0 18H5V9h14v12zm0-14H5V5h14v2z"/></svg>${eData.date}</div>
+                    <h6 class="fw-bold mb-1">${titles[key]}</h6>
+                    <span class="badge ${badges[key]}">${eData.date}</span>
+                </div>
+                <button class="btn-capture" onclick="captureElement('${cardId}','enyx-${key}')" title="บันทึกรูป">
+                    <svg style="width:15px;height:15px;fill:currentColor" viewBox="0 0 24 24"><path d="M12 15.2A3.2 3.2 0 0 1 8.8 12 3.2 3.2 0 0 1 12 8.8 3.2 3.2 0 0 1 15.2 12 3.2 3.2 0 0 1 12 15.2M9 2L7.17 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-3.17L15 2H9zm3 15a5 5 0 0 0 5-5 5 5 0 0 0-5-5 5 5 0 0 0-5 5 5 5 0 0 0 5 5z"/></svg>
+                </button>
+            </div>
+            <table class="table-modern">
+                <tr class="row-highlight">
+                    <td><div class="plat-tag"><div class="plat-dot dot-shopee"></div>Shopee รวม</div></td>
+                    <td class="text-end">${shopeeT}</td>
+                </tr>
+                <tr><td class="ps-4 text-muted small">SPX Pick UP</td><td class="text-end text-muted small">${d.spx_pickup}</td></tr>
+                <tr><td class="ps-4 text-muted small">Express Delivery (SHP FOOD)</td><td class="text-end text-muted small">${d.shp_food||0}</td></tr>
+                <tr><td class="ps-4 text-muted small">Express Delivery (SPX)</td><td class="text-end text-muted small">${d.spx_express}</td></tr>
+                <tr><td class="ps-4 text-muted small">SPX ทันที</td><td class="text-end text-muted small">${d.spx_instant}</td></tr>
+                <tr><td class="ps-4 text-muted small">Shopee Advance Fulfilment</td><td class="text-end text-muted small">${d.shopee_fulfill}</td></tr>
+                <tr><td><div class="plat-tag"><div class="plat-dot dot-tiktok"></div>TikTok</div></td><td class="text-end">${d.tiktok}</td></tr>
+                <tr><td><div class="plat-tag"><div class="plat-dot dot-lazada"></div>Lazada</div></td><td class="text-end">${d.lazada}</td></tr>
+                <tr><td><div class="plat-tag"><div class="plat-dot dot-amaze"></div>Amaze</div></td><td class="text-end">${d.amaze}</td></tr>
+                <tr><td><div class="plat-tag"><div class="plat-dot dot-homepro"></div>HomePro</div></td><td class="text-end">${hp}</td></tr>
+                <tr class="row-total"><td>ยอดรวมสุทธิ</td><td class="text-end">${total}</td></tr>
+            </table>
+        </div>`;
+    });
+
+    // Grand Total
+    let all = {spx_pickup:0,shp_food:0,spx_express:0,spx_instant:0,shopee_fulfill:0,tiktok:0,lazada:0,amaze:0,homepro:0};
+    let has = false;
+    ['morning','noon','afternoon','evening'].forEach(k => {
+        if(eData[k]) { has=true; Object.keys(all).forEach(x => all[x] += (eData[k][x]||0)); }
+    });
+    if(has) {
+        const sAll = all.spx_pickup+all.shp_food+all.spx_express+all.spx_instant+all.shopee_fulfill;
+        const gAll = sAll+all.tiktok+all.lazada+all.amaze+all.homepro;
+        const grandId = 'e-card-grand-total';
+        area.innerHTML += `
+        <div class="card-modern mt-5" style="border:2px solid #212529" id="${grandId}">
+            <div class="d-flex justify-content-between align-items-start mb-3">
+                <div>
+                    <div class="summary-date-badge"><svg style="width:13px;height:13px;fill:currentColor;margin-right:4px;vertical-align:-1px" viewBox="0 0 24 24"><path d="M19 3h-1V1h-2v2H8V1H6v2H5a2 2 0 0 0-2 2v16c0 1.1.9 2 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2zm0 18H5V9h14v12zm0-14H5V5h14v2z"/></svg>${eData.date}</div>
+                    <h5 class="fw-bold mb-1"><svg style="width:15px;height:15px;fill:currentColor;margin-right:7px;vertical-align:-1px" viewBox="0 0 24 24"><path d="M5 9h4v11H5zm6-5h2v16h-2zm6 8h2v8h-2z"/></svg>สรุปยอดทั้งวัน</h5>
+                    <span class="badge bg-warning text-dark">${eData.date}</span>
+                </div>
+                <button class="btn-capture" onclick="captureElement('${grandId}','enyx-summary')" title="บันทึกรูป">
+                    <svg style="width:15px;height:15px;fill:currentColor" viewBox="0 0 24 24"><path d="M12 15.2A3.2 3.2 0 0 1 8.8 12 3.2 3.2 0 0 1 12 8.8 3.2 3.2 0 0 1 15.2 12 3.2 3.2 0 0 1 12 15.2M9 2L7.17 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-3.17L15 2H9zm3 15a5 5 0 0 0 5-5 5 5 0 0 0-5-5 5 5 0 0 0-5 5 5 5 0 0 0 5 5z"/></svg>
+                </button>
+            </div>
+            <table class="table-modern">
+                <tr class="row-highlight"><td><div class="plat-tag"><div class="plat-dot dot-shopee"></div>Shopee Group</div></td><td class="text-end fw-bold">${sAll}</td></tr>
+                <tr><td class="ps-4 text-muted small">SPX Pick UP</td><td class="text-end text-muted small">${all.spx_pickup}</td></tr>
+                <tr><td class="ps-4 text-muted small">Express Delivery (SHP FOOD)</td><td class="text-end text-muted small">${all.shp_food}</td></tr>
+                <tr><td class="ps-4 text-muted small">Express Delivery (SPX)</td><td class="text-end text-muted small">${all.spx_express}</td></tr>
+                <tr><td class="ps-4 text-muted small">SPX ทันที</td><td class="text-end text-muted small">${all.spx_instant}</td></tr>
+                <tr><td class="ps-4 text-muted small">Shopee Advance Fulfilment</td><td class="text-end text-muted small">${all.shopee_fulfill}</td></tr>
+                <tr><td><div class="plat-tag"><div class="plat-dot dot-tiktok"></div>TikTok</div></td><td class="text-end fw-bold">${all.tiktok}</td></tr>
+                <tr><td><div class="plat-tag"><div class="plat-dot dot-lazada"></div>Lazada</div></td><td class="text-end fw-bold">${all.lazada}</td></tr>
+                <tr><td><div class="plat-tag"><div class="plat-dot dot-amaze"></div>Amaze</div></td><td class="text-end fw-bold">${all.amaze}</td></tr>
+                <tr><td><div class="plat-tag"><div class="plat-dot dot-homepro"></div>HomePro</div></td><td class="text-end fw-bold">${all.homepro}</td></tr>
+                <tr class="row-total"><td>ยอดรวมทั้งหมด</td><td class="text-end">${gAll}</td></tr>
+            </table>
+        </div>`;
+    }
+}
+
+function eUpdateDashboard() {
+    let total = 0;
+    let pStats = {shopee:0,tiktok:0,lazada:0,amaze:0,homepro:0};
+    let rStats = [0,0,0,0];
+    ['morning','noon','afternoon','evening'].forEach((k,idx) => {
+        const el = document.getElementById(`e-st-${k}`);
+        if(eData[k]) {
+            el.className = 'text-success fw-bold';
+            const d = eData[k]; const hp = d.homepro||0;
+            const s = d.spx_pickup+(d.shp_food||0)+d.spx_express+d.spx_instant+d.shopee_fulfill;
+            const sum = s+d.tiktok+d.lazada+d.amaze+hp;
+            pStats.shopee+=s; pStats.tiktok+=d.tiktok; pStats.lazada+=d.lazada; pStats.amaze+=d.amaze; pStats.homepro+=hp;
+            rStats[idx]=sum; total+=sum;
+        } else { el.className = 'text-muted opacity-25'; }
+    });
+    document.getElementById('e-dashTotalOrders').innerText = total;
+    document.getElementById('e-dashDate').innerText = eData.date;
+    if(window.Chart && eChartP) { eChartP.data.datasets[0].data=[pStats.shopee,pStats.tiktok,pStats.lazada,pStats.amaze,pStats.homepro]; eChartP.update(); }
+    if(window.Chart && eChartR) { eChartR.data.datasets[0].data=rStats; eChartR.update(); }
+}
+
+function eInitCharts() {
+    if(!window.Chart) return;
+    eChartP = new Chart(document.getElementById('e-chartPlatform').getContext('2d'), {
+        type:'doughnut',
+        data:{ labels:['Shopee','TikTok','Lazada','Amaze','HomePro'], datasets:[{data:[0,0,0,0,0],backgroundColor:['#ee4d2d','#000000','#0f146d','#007bff','#0dcaf0'],borderWidth:0}] },
+        options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'right',labels:{boxWidth:10,usePointStyle:true}}}}
+    });
+    eChartR = new Chart(document.getElementById('e-chartRounds').getContext('2d'), {
+        type:'bar',
+        data:{ labels:['เช้า','เที่ยง','บ่าย','เย็น'], datasets:[{label:'ออเดอร์',data:[0,0,0,0],backgroundColor:'#FFC107',borderRadius:5}] },
+        options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,grid:{display:false}},x:{grid:{display:false}}}}
+    });
+}
+
+function eResetDay() {
+    if(!confirm('ยืนยันการล้างข้อมูลวันนี้ทั้งหมด? (ข้อมูลจะหายถาวร)')) return;
+    eData = eInitData(); eSave();
+    eGetInputs().forEach(i => i.value='');
+    document.getElementById('e-btn-save').innerHTML = 'บันทึกยอดรวม (0) (Save Data)';
+    eRenderSummary();
+    alert('ล้างข้อมูลเรียบร้อย เริ่มต้นวันใหม่');
+}
+
+// ═══════════════════════════════════════════════════════
+//   AURIST
+// ═══════════════════════════════════════════════════════
+const A_KEY = 'aurist_v2_' + getTodayKey();
+let aData = JSON.parse(localStorage.getItem(A_KEY)) || aInitData();
+
+// อ่านจาก Firebase + subscribe realtime
+function aSubscribeFirebase() {
+    const ref = db.ref('aurist/' + getTodayKey());
+    ref.on('value', snap => {
+        const val = snap.val();
+        if(val) {
+            aData = val;
+            localStorage.setItem(A_KEY, JSON.stringify(aData));
+            aLoadRoundData();
+            aRenderSummary();
+            aUpdateDashboard();
+            hRefreshDashboard();
+        }
+    });
+}
+
+function aSaveToStorage() {
+    localStorage.setItem(A_KEY, JSON.stringify(aData));
+    // sync Firebase
+    db.ref('aurist/' + getTodayKey()).set(aData).catch(err => console.warn('FB write err:', err));
+    const t = new Date().toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'});
+    const el = document.getElementById('a-saveIndicator');
+    if(el) el.textContent = `บันทึกล่าสุด ${t}`;
+}
+
+function aInitData() { return { date: getShortDate(), morning:null, noon:null, afternoon:null, evening:null }; }
+
+const aLogics = [
+    {id:'spx_pickup',  name:'SPX Pick UP'},
+    {id:'shp_food',    name:'Express Delivery (SHP FOOD)'},
+    {id:'spx_express', name:'Express Delivery (SPX)'},
+    {id:'spx_instant', name:'SPX ทันที'},
+    {id:'shopee_fulfill', name:'Shopee Advance Fulfilment'},
+    {id:'tiktok',  name:'TikTok Shop'},
+    {id:'lazada',  name:'Lazada'},
+    {id:'amaze',   name:'Amaze'},
+    {id:'homepro', name:'HomePro'}
+];
+
+function aGetInputs() { return document.querySelectorAll('#a-inputCard .a-input-field'); }
+
+function aUpdateRealtimeTotal() {
+    let sum = 0;
+    aGetInputs().forEach(inp => sum += (Math.max(0,parseInt(inp.value)||0)));
+    document.getElementById('a-btn-save').textContent = `บันทึกยอดรวม (${sum}) (Save Data)`;
+}
+
+function aLoadRoundData() {
+    const r = document.querySelector('input[name="a-round"]:checked').value;
+    const d = aData[r];
+    aGetInputs().forEach(inp => {
+        const k = inp.dataset.key;
+        inp.value = d ? (d[k] || '') : '';
+    });
+    aUpdateRealtimeTotal();
+}
+
+function aSaveRound() {
+    const r = document.querySelector('input[name="a-round"]:checked').value;
+    const vals = {};
+    aGetInputs().forEach(inp => vals[inp.dataset.key] = Math.max(0,parseInt(inp.value)||0));
+    aData[r] = vals;
+    aData.date = getShortDate();
+    aSaveToStorage();
+    aRenderSummary();
+    aUpdateDashboard();
+    document.getElementById('a-v_spx_pickup').focus();
+    aShowToast(`บันทึกรอบ "${r}" เรียบร้อย`);
+}
+
+function aRenderSummary() {
+    const area = document.getElementById('a-summaryArea');
+    area.innerHTML = '';
+    const roundNames = {morning:'รอบเช้า',noon:'รอบเที่ยง',afternoon:'รอบบ่าย',evening:'รอบเย็น'};
+    const accentColors = {morning:'#F5A623',noon:'#4facfe',afternoon:'#c471ed',evening:'#00f2fe'};
+    const platColors = {spx_pickup:'#ee4d2d',spx_express:'#ee4d2d',spx_instant:'#ee4d2d',shopee_fulfill:'#ee4d2d',tiktok:'#000',lazada:'#0f146d',amaze:'#007bff',homepro:'#0dcaf0'};
+
+    ['morning','noon','afternoon','evening'].forEach(key => {
+        if(!aData[key]) return;
+        const d = aData[key];
+        const shopeeT = (d.spx_pickup||0)+(d.shp_food||0)+(d.spx_express||0)+(d.spx_instant||0)+(d.shopee_fulfill||0);
+        const total   = shopeeT+(d.tiktok||0)+(d.lazada||0)+(d.amaze||0)+(d.homepro||0);
+        const cardId  = `a-card-${key}`;
+        const color   = accentColors[key];
+
+        area.innerHTML += `
+        <div class="a-summary-card" id="${cardId}">
+            <div style="height:3px;border-radius:2px;background:${color};margin:-30px -30px 20px;border-radius:18px 18px 0 0"></div>
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px">
+                <div>
+                    <div class="a-summary-date" style="margin-bottom:4px"><svg style="width:13px;height:13px;fill:#E5C07B;margin-right:5px;vertical-align:-1px" viewBox="0 0 24 24"><path d="M19 3h-1V1h-2v2H8V1H6v2H5a2 2 0 0 0-2 2v16c0 1.1.9 2 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2zm0 18H5V9h14v12zm0-14H5V5h14v2z"/></svg>${aData.date}</div>
+                    <div class="a-summary-title" style="color:${color}">${roundNames[key]}</div>
+                </div>
+                <button class="a-btn-capture" onclick="aCapture('${cardId}','aurist-${key}')" title="บันทึกรูป">
+                    <svg style="width:15px;height:15px;fill:currentColor" viewBox="0 0 24 24"><path d="M12 15.2A3.2 3.2 0 0 1 8.8 12 3.2 3.2 0 0 1 12 8.8 3.2 3.2 0 0 1 15.2 12 3.2 3.2 0 0 1 12 15.2M9 2L7.17 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-3.17L15 2H9zm3 15a5 5 0 0 0 5-5 5 5 0 0 0-5-5 5 5 0 0 0-5 5 5 5 0 0 0 5 5z"/></svg>
+                </button>
+            </div>
+            <table class="a-table">
+                <tr class="a-row-shopee">
+                    <td><span class="a-plat-dot" style="background:#ee4d2d"></span>Shopee รวม</td>
+                    <td>${shopeeT}</td>
+                </tr>
+                <tr class="a-row-sub"><td>&nbsp;&nbsp;&nbsp;SPX Pick UP</td><td>${d.spx_pickup||0}</td></tr>
+                <tr class="a-row-sub"><td>&nbsp;&nbsp;&nbsp;Express Delivery (SHP FOOD)</td><td>${d.shp_food||0}</td></tr>
+                <tr class="a-row-sub"><td>&nbsp;&nbsp;&nbsp;Express Delivery (SPX)</td><td>${d.spx_express||0}</td></tr>
+                <tr class="a-row-sub"><td>&nbsp;&nbsp;&nbsp;SPX ทันที</td><td>${d.spx_instant||0}</td></tr>
+                <tr class="a-row-sub"><td>&nbsp;&nbsp;&nbsp;Shopee Advance Fulfilment</td><td>${d.shopee_fulfill||0}</td></tr>
+                <tr><td><span class="a-plat-dot" style="background:#000"></span>TikTok</td><td>${d.tiktok||0}</td></tr>
+                <tr><td><span class="a-plat-dot" style="background:#0f146d"></span>Lazada</td><td>${d.lazada||0}</td></tr>
+                <tr><td><span class="a-plat-dot" style="background:#007bff"></span>Amaze</td><td>${d.amaze||0}</td></tr>
+                <tr><td><span class="a-plat-dot" style="background:#0dcaf0"></span>HomePro</td><td>${d.homepro||0}</td></tr>
+                <tr class="a-row-total"><td>ยอดรวมสุทธิ</td><td>${total}</td></tr>
+            </table>
+        </div>`;
+    });
+
+    // Grand total
+    let all = {}; aLogics.forEach(l => all[l.id]=0); all.shp_food = all.shp_food || 0; let has=false;
+    ['morning','noon','afternoon','evening'].forEach(k => {
+        if(aData[k]) { has=true; aLogics.forEach(l => all[l.id]+=(aData[k][l.id]||0)); }
+    });
+    if(has) {
+        const sAll = all.spx_pickup+all.shp_food+all.spx_express+all.spx_instant+all.shopee_fulfill;
+        const gAll = sAll+all.tiktok+all.lazada+all.amaze+all.homepro;
+        const gId  = 'a-card-grand';
+        area.innerHTML += `
+        <div class="a-grand-card" id="${gId}" style="margin-top:30px">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px">
+                <div>
+                    <div class="a-summary-date"><svg style="width:13px;height:13px;fill:#E5C07B;margin-right:5px;vertical-align:-1px" viewBox="0 0 24 24"><path d="M19 3h-1V1h-2v2H8V1H6v2H5a2 2 0 0 0-2 2v16c0 1.1.9 2 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2zm0 18H5V9h14v12zm0-14H5V5h14v2z"/></svg>${aData.date}</div>
+                    <div class="a-summary-title" style="font-size:1.2rem">สรุปยอดทั้งวัน</div>
+                    <div style="font-size:0.78rem;color:#a1a1aa">${getThaiDate()}</div>
+                </div>
+                <button class="a-btn-capture" onclick="aCapture('${gId}','aurist-summary')" title="บันทึกรูป">
+                    <svg style="width:15px;height:15px;fill:currentColor" viewBox="0 0 24 24"><path d="M12 15.2A3.2 3.2 0 0 1 8.8 12 3.2 3.2 0 0 1 12 8.8 3.2 3.2 0 0 1 15.2 12 3.2 3.2 0 0 1 12 15.2M9 2L7.17 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-3.17L15 2H9zm3 15a5 5 0 0 0 5-5 5 5 0 0 0-5-5 5 5 0 0 0-5 5 5 5 0 0 0 5 5z"/></svg>
+                </button>
+            </div>
+            <table class="a-table">
+                <tr class="a-row-shopee"><td><span class="a-plat-dot" style="background:#ee4d2d"></span>Shopee Group</td><td>${sAll}</td></tr>
+                <tr class="a-row-sub"><td>&nbsp;&nbsp;&nbsp;SPX Pick UP</td><td>${all.spx_pickup}</td></tr>
+                <tr class="a-row-sub"><td>&nbsp;&nbsp;&nbsp;Express Delivery (SHP FOOD)</td><td>${all.shp_food}</td></tr>
+                <tr class="a-row-sub"><td>&nbsp;&nbsp;&nbsp;Express Delivery (SPX)</td><td>${all.spx_express}</td></tr>
+                <tr class="a-row-sub"><td>&nbsp;&nbsp;&nbsp;SPX ทันที</td><td>${all.spx_instant}</td></tr>
+                <tr class="a-row-sub"><td>&nbsp;&nbsp;&nbsp;Shopee Advance Fulfilment</td><td>${all.shopee_fulfill}</td></tr>
+                <tr><td><span class="a-plat-dot" style="background:#000"></span>TikTok</td><td>${all.tiktok}</td></tr>
+                <tr><td><span class="a-plat-dot" style="background:#0f146d"></span>Lazada</td><td>${all.lazada}</td></tr>
+                <tr><td><span class="a-plat-dot" style="background:#007bff"></span>Amaze</td><td>${all.amaze}</td></tr>
+                <tr><td><span class="a-plat-dot" style="background:#0dcaf0"></span>HomePro</td><td>${all.homepro}</td></tr>
+                <tr class="a-row-total"><td>ยอดรวมทั้งหมด</td><td>${gAll}</td></tr>
+            </table>
+        </div>`;
+    }
+}
+
+function aCapture(cardId, prefix) {
+    if(!window.html2canvas) { aShowToast('ระบบบันทึกรูปยังไม่พร้อม'); return; }
+    const el = document.getElementById(cardId);
+    const btns = el.querySelectorAll('.a-btn-capture');
+    btns.forEach(b => b.style.display='none');
+    const origBg = el.style.background; // FIX F: เก็บ background เดิมไว้ก่อน
+    el.style.background = 'linear-gradient(145deg,#0e0e16,#080810)';
+    html2canvas(el, { scale:2, useCORS:true, backgroundColor:'#0d0d1a' }).then(canvas => {
+        const link = document.createElement('a');
+        link.download = `${prefix}-${Date.now()}.png`;
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+    }).catch(err => {
+        console.error(err); aShowToast('เกิดข้อผิดพลาด');
+    }).finally(() => {
+        // FIX F: ใช้ finally เพื่อ restore เสมอ ไม่ว่าจะ success หรือ error
+        el.style.background = origBg;
+        btns.forEach(b => b.style.display='');
+    });
+}
+
+function aUpdateDashboard() {
+    let all = {}; aLogics.forEach(l => all[l.id]=0); all.shp_food = all.shp_food || 0;
+    let byRound = {morning:0,noon:0,afternoon:0,evening:0};
+    let grand = 0;
+
+    ['morning','noon','afternoon','evening'].forEach((k,idx) => {
+        const el = document.getElementById(`a-st-${k}`);
+        if(aData[k]) {
+            el.classList.add('done');
+            aLogics.forEach(l => { all[l.id]+=(aData[k][l.id]||0); byRound[k]+=(aData[k][l.id]||0); });
+            grand += byRound[k];
+        } else { el.classList.remove('done'); }
+    });
+
+    document.getElementById('a-grandTotal').textContent = grand;
+    document.getElementById('a-d-grand').textContent = grand;
+
+    const topR = Object.entries(byRound).sort((a,b)=>b[1]-a[1])[0];
+    const rNames = {morning:'รอบเช้า',noon:'รอบเที่ยง',afternoon:'รอบบ่าย',evening:'รอบเย็น'};
+    document.getElementById('a-d-top-period').textContent = rNames[topR[0]];
+    document.getElementById('a-d-top-period-val').textContent = topR[1] + ' ออเดอร์';
+
+    const topL = aLogics.reduce((a,b) => all[a.id]>=all[b.id]?a:b);
+    document.getElementById('a-d-top-logic').textContent = topL.name;
+    document.getElementById('a-d-top-logic-val').textContent = all[topL.id] + ' ออเดอร์';
+
+    const maxL = Math.max(...aLogics.map(l=>all[l.id]),1);
+    const barsEl = document.getElementById('a-logicBars');
+    barsEl.innerHTML = '';
+    aLogics.forEach(l => {
+        const row = document.createElement('div');
+        row.className = 'a-bar-row';
+        row.innerHTML = `<div class="a-bar-name">${l.name}</div><div class="a-bar-track"><div class="a-bar-fill" style="width:${Math.round(all[l.id]/maxL*100)}%"></div></div><div class="a-bar-val">${all[l.id]}</div>`;
+        barsEl.appendChild(row);
+    });
+}
+
+function aResetDay() {
+    if(!confirm('ยืนยันการล้างข้อมูลวันนี้? (ข้อมูลจะหายถาวร)')) return;
+    aData = aInitData();
+    aSaveToStorage();
+    aGetInputs().forEach(i => i.value='');
+    document.getElementById('a-btn-save').textContent = 'บันทึกยอดรวม (0) (Save Data)';
+    document.getElementById('a-summaryArea').innerHTML = '';
+    aUpdateDashboard();
+    aShowToast('ล้างข้อมูลเรียบร้อย');
+}
+
+function aCopyReport() {
+    const date = getThaiDate();
+    let r = `AURIST — รายงานยอดขาย\n${date}\n${'─'.repeat(38)}\n\n`;
+    const rNames = {morning:'รอบเช้า',noon:'รอบเที่ยง',afternoon:'รอบบ่าย',evening:'รอบเย็น'};
+    ['morning','noon','afternoon','evening'].forEach(k => {
+        if(!aData[k]) return;
+        let sub=0; r+=`${rNames[k]}\n`;
+        aLogics.forEach(l => { const v=aData[k][l.id]||0; if(v>0){r+=`  ${l.name.padEnd(30)} ${v}\n`; sub+=v;} });
+        r+=`  รวม: ${sub}\n\n`;
+    });
+    navigator.clipboard.writeText(r).then(()=>aShowToast('คัดลอกรายงานแล้ว')).catch(()=>aShowToast('คัดลอกไม่สำเร็จ'));
+}
+
+function aShowToast(msg) {
+    const el = document.getElementById('a-toast');
+    el.textContent=msg; el.classList.add('show');
+    setTimeout(()=>el.classList.remove('show'),2500);
+}
+
+
+// ═══════════════════════════════════════════════════════
+//   HOME DASHBOARD
+// ═══════════════════════════════════════════════════════
+let hChartRounds = null;
+let hChartPlat   = null;
+
+const H_ENYX_PLATFORMS = [
+    {id:'spx_pickup',     name:'SPX Pick UP',        color:'#ee4d2d'},
+    {id:'shp_food',       name:'SHP FOOD Express',   color:'#ff8a6e'},
+    {id:'spx_express',    name:'Express (SPX)',       color:'#ffb347'},
+    {id:'spx_instant',    name:'SPX ทันที',           color:'#e09000'},
+    {id:'shopee_fulfill', name:'Shopee Advance',      color:'#c97000'},
+    {id:'tiktok',         name:'TikTok',              color:'#555'},
+    {id:'lazada',         name:'Lazada',              color:'#3a7bd5'},
+    {id:'amaze',          name:'Amaze',               color:'#007bff'},
+    {id:'homepro',        name:'HomePro',             color:'#0dcaf0'},
+];
+const H_AURIST_CHANNELS = [
+    {id:'spx_pickup',     name:'SPX Pick UP',        color:'#ee4d2d'},
+    {id:'shp_food',       name:'SHP FOOD Express',   color:'#ff8a6e'},
+    {id:'spx_express',    name:'Express (SPX)',       color:'#ffb347'},
+    {id:'spx_instant',    name:'SPX ทันที',           color:'#e09000'},
+    {id:'shopee_fulfill', name:'Shopee Advance',     color:'#c97000'},
+    {id:'tiktok',         name:'TikTok',             color:'#555'},
+    {id:'lazada',         name:'Lazada',             color:'#3a7bd5'},
+    {id:'amaze',          name:'Amaze',              color:'#007bff'},
+    {id:'homepro',        name:'HomePro',            color:'#0dcaf0'},
+];
+
+function hGetEnyxTotals() {
+    let totals = {};
+    H_ENYX_PLATFORMS.forEach(p => totals[p.id] = 0);
+    let byRound = {morning:0, noon:0, afternoon:0, evening:0};
+    let grand = 0;
+    ['morning','noon','afternoon','evening'].forEach(k => {
+        if(!eData[k]) return;
+        const d = eData[k];
+        H_ENYX_PLATFORMS.forEach(p => totals[p.id] += (d[p.id]||0));
+        byRound[k] = H_ENYX_PLATFORMS.reduce((acc,p) => acc+(d[p.id]||0), 0);
+        grand += byRound[k];
+    });
+    return { totals, byRound, grand };
+}
+
+function hGetAuristTotals() {
+    let totals = {}; H_AURIST_CHANNELS.forEach(c => totals[c.id] = 0);
+    let byRound = {morning:0, noon:0, afternoon:0, evening:0};
+    let grand = 0;
+    ['morning','noon','afternoon','evening'].forEach(k => {
+        if(!aData[k]) return;
+        const d = aData[k];
+        H_AURIST_CHANNELS.forEach(c => totals[c.id] += (d[c.id]||0));
+        byRound[k] = H_AURIST_CHANNELS.reduce((acc,c) => acc+(d[c.id]||0), 0);
+        grand += byRound[k];
+    });
+    return { totals, byRound, grand };
+}
+
+function hBuildBars(containerId, items, maxVal) {
+    const el = document.getElementById(containerId);
+    if(!el) return;
+    el.innerHTML = '';
+    items.forEach(item => {
+        const pct = maxVal > 0 ? Math.max(Math.round(item.val / maxVal * 100), item.val > 0 ? 3 : 0) : 0;
+        const row = document.createElement('div');
+        row.className = 'h-bar-row';
+        row.innerHTML = `
+            <div class="h-bar-name">${item.name}</div>
+            <div class="h-bar-track"><div class="h-bar-fill" style="width:${pct}%;background:${item.color}"></div></div>
+            <div class="h-bar-val">${item.val}</div>`;
+        el.appendChild(row);
+    });
+}
+
+function hBuildRoundsGrid(eByRound, aByRound) {
+    const el = document.getElementById('h-rounds-grid');
+    if(!el) return;
+    el.innerHTML = '';
+    const roundNames  = {morning:'เช้า', noon:'เที่ยง', afternoon:'บ่าย', evening:'เย็น'};
+    ['morning','noon','afternoon','evening'].forEach(k => {
+        const eVal  = eByRound[k] || 0;
+        const aVal  = aByRound[k] || 0;
+        const total = eVal + aVal;
+        const hasSome = (eData[k] != null) || (aData[k] != null);
+        const card = document.createElement('div');
+        card.className = 'h-round-card' + (hasSome ? ' done' : '');
+        const eStr = eData[k] ? 'E: '+eVal : '—';
+        const aStr = aData[k] ? 'A: '+aVal : '—';
+        card.innerHTML = `
+            <div class="h-round-dot"></div>
+            <div class="h-round-name">${roundNames[k]}</div>
+            <div class="h-round-val">${hasSome ? total : '—'}</div>
+            <div class="h-round-sys">${hasSome ? eStr+' / '+aStr : 'ยังไม่มีข้อมูล'}</div>`;
+        el.appendChild(card);
+    });
+}
+
+function hBuildMiniStats(eResult, aResult) {
+    const el = document.getElementById('h-stat-row');
+    if(!el) return;
+    const roundNames = {morning:'เช้า', noon:'เที่ยง', afternoon:'บ่าย', evening:'เย็น'};
+    let bestRoundKey = 'morning', bestRoundVal = 0;
+    ['morning','noon','afternoon','evening'].forEach(k => {
+        const v = (eResult.byRound[k]||0) + (aResult.byRound[k]||0);
+        if(v > bestRoundVal){ bestRoundVal = v; bestRoundKey = k; }
+    });
+    const shopeeTotal = (eResult.totals.spx_pickup||0)+(eResult.totals.shp_food||0)+(eResult.totals.spx_express||0)+(eResult.totals.spx_instant||0)+(eResult.totals.shopee_fulfill||0) +
+        (aResult.totals.spx_pickup||0)+(aResult.totals.shp_food||0)+
+        (aResult.totals.spx_express||0)+(aResult.totals.spx_instant||0)+(aResult.totals.shopee_fulfill||0);
+    const eFilled = ['morning','noon','afternoon','evening'].filter(k=>eData[k]).length;
+    const aFilled = ['morning','noon','afternoon','evening'].filter(k=>aData[k]).length;
+    const items = [
+        {label:'รอบที่ดีที่สุด',       val: bestRoundVal > 0 ? roundNames[bestRoundKey] : '—', sub: bestRoundVal > 0 ? bestRoundVal+' orders' : 'ยังไม่มีข้อมูล'},
+        {label:'Shopee รวมทุกระบบ',    val: shopeeTotal,  sub: 'orders รวม Shopee group'},
+        {label:'รอบที่บันทึกแล้ว',     val: Math.max(eFilled,aFilled)+'/4', sub: 'E:'+eFilled+'/4  ·  A:'+aFilled+'/4'},
+    ];
+    el.innerHTML = items.map(it => `
+        <div class="h-stat-mini">
+            <div class="h-stat-mini-label">${it.label}</div>
+            <div class="h-stat-mini-val">${it.val}</div>
+            <div class="h-stat-mini-sub">${it.sub}</div>
+        </div>`).join('');
+}
+
+function hInitCharts() {
+    if(!window.Chart) return;
+    const ctxR = document.getElementById('h-chart-rounds');
+    const ctxP = document.getElementById('h-chart-plat');
+    if(!ctxR || !ctxP) return;
+
+    hChartRounds = new Chart(ctxR.getContext('2d'), {
+        type: 'bar',
+        data: {
+            labels: ['เช้า','เที่ยง','บ่าย','เย็น'],
+            datasets: [
+                {label:'ENYX',   data:[0,0,0,0], backgroundColor:'rgba(255,193,7,0.9)',   borderRadius:6, borderSkipped:false},
+                {label:'AURIST', data:[0,0,0,0], backgroundColor:'rgba(229,192,123,0.5)', borderRadius:6, borderSkipped:false},
+            ]
+        },
+        options: {
+            responsive:true, maintainAspectRatio:false,
+            plugins:{legend:{display:true, position:'bottom', labels:{color:'#888',boxWidth:10,usePointStyle:true,font:{size:10}}}},
+            scales:{
+                x:{stacked:true, grid:{display:false}, ticks:{color:'#999'}},
+                y:{stacked:true, beginAtZero:true, grid:{color:'#f0f0e8'}, ticks:{color:'#999'}}
+            }
+        }
+    });
+
+    hChartPlat = new Chart(ctxP.getContext('2d'), {
+        type: 'doughnut',
+        data: {
+            labels: ['Shopee','TikTok','Lazada','Amaze','HomePro'],
+            datasets:[{data:[0,0,0,0,0],
+                backgroundColor:['#ee4d2d','#666','#3a7bd5','#007bff','#0dcaf0'],
+                borderWidth:3, borderColor:'#fff', hoverOffset:8}]
+        },
+        options:{
+            responsive:true, maintainAspectRatio:false, cutout:'65%',
+            plugins:{legend:{position:'right', labels:{color:'#555',boxWidth:10,usePointStyle:true,font:{size:10}}}}
+        }
+    });
+}
+
+function hRefreshDashboard() {
+    const eResult = hGetEnyxTotals();
+    const aResult = hGetAuristTotals();
+    const eG = eResult.grand, aG = aResult.grand;
+    const grandTotal = eG + aG;
+
+    // Date — ใช้ session label ถ้ามี
+    const el_date  = document.getElementById('h-date');
+    const el_cdate = document.getElementById('h-combined-date');
+    if(el_date)  el_date.textContent  = 'ประจำวันที่ ' + getThaiDate();
+    if(el_cdate && hSession) el_cdate.textContent = hSession.label;
+    else if(el_cdate) el_cdate.textContent = getShortDate();
+
+    // Totals
+    document.getElementById('h-grand-total').textContent   = grandTotal;
+    document.getElementById('h-enyx-total').textContent    = eG;
+    document.getElementById('h-aurist-total').textContent  = aG;
+    document.getElementById('h-e-total-b').textContent     = eG;
+    document.getElementById('h-a-total-b').textContent     = aG;
+
+    // Platform / channel panel totals
+    const ePlatTotal = Object.values(eResult.totals).reduce((a,b)=>a+b,0);
+    const aChanTotal = Object.values(aResult.totals).reduce((a,b)=>a+b,0);
+    const epEl = document.getElementById('h-enyx-plat-total');
+    const acEl = document.getElementById('h-aurist-chan-total');
+    if(epEl) epEl.textContent = ePlatTotal;
+    if(acEl) acEl.textContent = aChanTotal;
+
+    // Sub text
+    const ePct = grandTotal > 0 ? Math.round(eG/grandTotal*100) : 0;
+    const aPct = grandTotal > 0 ? Math.round(aG/grandTotal*100) : 0;
+    document.getElementById('h-grand-sub').textContent =
+        grandTotal > 0
+            ? `ENYX ${ePct}%  ·  AURIST ${aPct}%  ·  รวม ${grandTotal} orders`
+            : 'ยังไม่มีข้อมูลวันนี้ — เข้าระบบเพื่อเริ่มบันทึก';
+
+    // Round grid
+    hBuildRoundsGrid(eResult.byRound, aResult.byRound);
+
+    // Bars — Enyx uses same sub-channels now
+    const ePlatMax = Math.max(...H_ENYX_PLATFORMS.map(p => eResult.totals[p.id]||0), 1);
+    hBuildBars('h-enyx-bars', H_ENYX_PLATFORMS.map(p => ({...p, val: eResult.totals[p.id]||0})), ePlatMax);
+
+    const aMax = Math.max(...H_AURIST_CHANNELS.map(c => aResult.totals[c.id]||0), 1);
+    hBuildBars('h-aurist-bars', H_AURIST_CHANNELS.map(c => ({...c, val: aResult.totals[c.id]||0})), aMax);
+
+    // Charts
+    if(hChartRounds) {
+        hChartRounds.data.datasets[0].data = ['morning','noon','afternoon','evening'].map(k=>eResult.byRound[k]||0);
+        hChartRounds.data.datasets[1].data = ['morning','noon','afternoon','evening'].map(k=>aResult.byRound[k]||0);
+        hChartRounds.update();
+    }
+    if(hChartPlat) {
+        const eShopeTotal = (eResult.totals.spx_pickup||0)+(eResult.totals.shp_food||0)+(eResult.totals.spx_express||0)+(eResult.totals.spx_instant||0)+(eResult.totals.shopee_fulfill||0);
+        const shopeeAll = eShopeTotal +
+            (aResult.totals.spx_pickup||0)+(aResult.totals.shp_food||0)+
+            (aResult.totals.spx_express||0)+(aResult.totals.spx_instant||0)+(aResult.totals.shopee_fulfill||0);
+        hChartPlat.data.datasets[0].data = [
+            shopeeAll,
+            (eResult.totals.tiktok||0)+(aResult.totals.tiktok||0),
+            (eResult.totals.lazada||0)+(aResult.totals.lazada||0),
+            (eResult.totals.amaze||0)+(aResult.totals.amaze||0),
+            (eResult.totals.homepro||0)+(aResult.totals.homepro||0),
+        ];
+        hChartPlat.update();
+    }
+
+    // Mini stats
+    hBuildMiniStats(eResult, aResult);
+
+    // Last update
+    const t = new Date().toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+    document.getElementById('h-last-update').textContent = `อัปเดตล่าสุด ${t}`;
+}
+
+function hCapture() {
+    if(!window.html2canvas) { alert('ระบบบันทึกรูปยังไม่พร้อม'); return; }
+
+    const btn = document.querySelector('.h-capture-btn');
+    if(btn) btn.style.display = 'none';
+
+    const zone     = document.getElementById('h-capture-zone');
+    const captureW = zone.offsetWidth;
+
+    // ── แปลง canvas → <img> ก่อน clone ──
+    const canvases = Array.from(zone.querySelectorAll('canvas'));
+    const snapshots = canvases.map(cv => {
+        try {
+            const img       = document.createElement('img');
+            img.src         = cv.toDataURL('image/png');
+            const w         = cv.offsetWidth  || cv.width  || 300;
+            const h         = cv.offsetHeight || cv.height || 200;
+            img.style.cssText = `display:block;width:${w}px;height:${h}px;max-width:100%;`;
+            cv.parentNode.insertBefore(img, cv);
+            cv.style.display = 'none';
+            return { cv, img };
+        } catch(e) { return { cv, img: null }; }
+    });
+
+    // ── wrapper นอกหน้าจอ ──
+    const wrapper = document.createElement('div');
+    wrapper.style.cssText = [
+        'position:fixed',
+        'top:-999999px',
+        'left:0',
+        `width:${captureW}px`,
+        'background:#f5f5f0',
+        'padding:32px',
+        'box-sizing:border-box',
+        "font-family:'Sarabun','Prompt',sans-serif",
+    ].join(';');
+    wrapper.innerHTML = zone.innerHTML;
+    // ลบ canvas เปล่าออก (ไม่มี pixel — ติดมาจาก innerHTML)
+    wrapper.querySelectorAll('canvas').forEach(c => c.remove());
+    document.body.appendChild(wrapper);
+
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+        const captureH = wrapper.scrollHeight;
+
+        html2canvas(wrapper, {
+            scale:        2,
+            useCORS:      true,
+            allowTaint:   true,
+            backgroundColor: '#f5f5f0',
+            logging:      false,
+            width:        captureW,
+            height:       captureH,
+            windowWidth:  captureW,
+            windowHeight: captureH,
+            scrollX:      0,
+            scrollY:      0,
+        }).then(canvas => {
+            // บันทึกลง Google Sheets
+            pushAllToSheets();
+            const link    = document.createElement('a');
+            link.download = `hq-summary-${getShortDate().replace(/\//g,'-')}-${Date.now()}.png`;
+            link.href     = canvas.toDataURL('image/png');
+            link.click();
+        }).catch(err => {
+            console.error(err);
+            alert('เกิดข้อผิดพลาด: ' + err.message);
+        }).finally(() => {
+            snapshots.forEach(({ cv, img }) => {
+                cv.style.display = '';
+                if(img) img.remove();
+            });
+            document.body.removeChild(wrapper);
+            if(btn) btn.style.display = '';
+        });
+    }));
+}
+
+// ═══════════════════════════════════════════════════════
+//   SMART SESSION ENGINE
+//   — Holiday detection (อาทิตย์ + นักขัตฤกษ์ + custom)
+//   — Session date range
+//   — Banner
+//   — History 5 sessions
+// ═══════════════════════════════════════════════════════
+
+// ── วันหยุดนักขัตฤกษ์ไทย (Buddhist Era - พ.ศ.) ──
+// format: 'YYYY-MM-DD' (ค.ศ. สำหรับ Date object)
+const THAI_PUBLIC_HOLIDAYS = new Set([
+    // 2568 (2025)
+    '2025-01-01','2025-02-12','2025-04-06','2025-04-07',
+    '2025-04-13','2025-04-14','2025-04-15',
+    '2025-05-01','2025-05-05','2025-05-12',
+    '2025-06-03','2025-07-10','2025-07-28',
+    '2025-08-11','2025-08-12',
+    '2025-10-13','2025-10-23',
+    '2025-12-05','2025-12-10','2025-12-31',
+    // 2569 (2026)
+    '2026-01-01','2026-02-02','2026-04-06','2026-04-07',
+    '2026-04-13','2026-04-14','2026-04-15',
+    '2026-05-01','2026-05-04','2026-05-11',
+    '2026-06-03','2026-07-28','2026-07-29',
+    '2026-08-12',
+    '2026-10-13','2026-10-23',
+    '2026-12-05','2026-12-10','2026-12-31',
+]);
+
+const SESSION_STORAGE_KEY  = 'hq_session_v1';
+const HISTORY_STORAGE_KEY  = 'hq_history_v1';
+const CUSTOM_HOL_KEY       = 'hq_custom_holidays_v1';
+const MAX_HISTORY          = 5;
+
+// ── State ──
+let hSession = null; // { dateFrom, dateTo, label, days }
+
+// ── Helpers ──
+function dateToKey(d) {
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+function keyToDate(k) {
+    const [y,m,d] = k.split('-').map(Number);
+    return new Date(y, m-1, d);
+}
+function isHoliday(dateKey) {
+    const d = keyToDate(dateKey);
+    if(d.getDay() === 0) return true; // อาทิตย์
+    if(THAI_PUBLIC_HOLIDAYS.has(dateKey)) return true;
+    const custom = getCustomHolidays();
+    return custom.has(dateKey);
+}
+function getCustomHolidays() {
+    try { return new Set(JSON.parse(localStorage.getItem(CUSTOM_HOL_KEY)||'[]')); }
+    catch(e) { return new Set(); }
+}
+function saveCustomHolidays(set) {
+    localStorage.setItem(CUSTOM_HOL_KEY, JSON.stringify([...set]));
+}
+function thaiShortDate(dateKey) {
+    const d = keyToDate(dateKey);
+    const days  = ['อา','จ','อ','พ','พฤ','ศ','ส'];
+    const months= ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+    return `${days[d.getDay()]} ${d.getDate()} ${months[d.getMonth()]}`;
+}
+function thaiFullDate(dateKey) {
+    const d = keyToDate(dateKey);
+    const days  = ['อาทิตย์','จันทร์','อังคาร','พุธ','พฤหัสบดี','ศุกร์','เสาร์'];
+    const months= ['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
+    const be = d.getFullYear() + 543;
+    return `${days[d.getDay()]}ที่ ${d.getDate()} ${months[d.getMonth()]} ${be}`;
+}
+
+// ── คำนวณวันหยุดต่อเนื่องก่อนวันนี้ ──
+function detectHolidaysBefore(todayKey) {
+    const holidays = [];
+    let check = new Date(keyToDate(todayKey));
+    check.setDate(check.getDate() - 1);
+    let safetyLimit = 30;
+    while(safetyLimit-- > 0) {
+        const k = dateToKey(check);
+        if(isHoliday(k)) {
+            holidays.unshift(k);
+            check.setDate(check.getDate() - 1);
+        } else break;
+    }
+    return holidays; // เรียงจากเก่า → ใหม่
+}
+
+// ── Session ──
+function buildSessionLabel(dateFrom, dateTo) {
+    if(dateFrom === dateTo) {
+        return thaiFullDate(dateTo);
+    }
+    const d1 = keyToDate(dateFrom), d2 = keyToDate(dateTo);
+    const diffDays = Math.round((d2 - d1) / 86400000) + 1;
+    return `${thaiShortDate(dateFrom)} – ${thaiShortDate(dateTo)} (${diffDays} วัน)`;
+}
+function buildSessionLabelFull(dateFrom, dateTo) {
+    if(dateFrom === dateTo) return thaiFullDate(dateTo);
+    const d1 = keyToDate(dateFrom), d2 = keyToDate(dateTo);
+    const diffDays = Math.round((d2-d1)/86400000)+1;
+    const months=['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+    const be = d2.getFullYear()+543;
+    return `${thaiShortDate(dateFrom)} – ${d2.getDate()} ${months[d2.getMonth()]} ${be}  (รวม ${diffDays} วัน)`;
+}
+
+function loadSession() {
+    try { return JSON.parse(localStorage.getItem(SESSION_STORAGE_KEY)||'null'); }
+    catch(e) { return null; }
+}
+function saveSession(s) {
+    localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(s));
+    db.ref('session/current').set(s).catch(()=>{});
+}
+function subscribeSession() {
+    db.ref('session/current').on('value', snap => {
+        const val = snap.val();
+        if(val && val.dateTo === getTodayKey()) {
+            // FIX C: ถ้า local session ใหม่กว่า (savedAt มากกว่า) ไม่ต้อง overwrite
+            // เช่น user เพิ่งกด "รวม 2 วัน" แล้ว Firebase ยัง push session เก่ากลับมา
+            if(hSession && hSession.savedAt && val.savedAt && hSession.savedAt > val.savedAt) return;
+            hSession = val;
+            localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(val));
+            hApplySession(val);
+        }
+    });
+}
+function initSessionForToday(dateFrom) {
+    const today = dateToKey(new Date());
+    const s = {
+        dateFrom: dateFrom || today,
+        dateTo:   today,
+        label:    buildSessionLabelFull(dateFrom || today, today),
+        savedAt:  Date.now(),
+    };
+    hSession = s;
+    saveSession(s);
+    return s;
+}
+
+// ── History ──
+function loadHistory() {
+    try { return JSON.parse(localStorage.getItem(HISTORY_STORAGE_KEY)||'[]'); }
+    catch(e) { return []; }
+}
+function pushHistory(session) {
+    const hist = loadHistory();
+    const filtered = hist.filter(h => h.dateTo !== session.dateTo);
+    filtered.unshift({ ...session, savedAt: Date.now() });
+    const trimmed = filtered.slice(0, MAX_HISTORY);
+    localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(trimmed));
+    db.ref('session/history').set(trimmed).catch(()=>{});
+}
+
+// ── อัปเดตวันที่ใน UI ──
+function hApplySession(s) {
+    hSession = s;
+    const el = document.getElementById('h-combined-date');
+    if(el) el.textContent = s.label;
+    // อัปเดต label ในส่วน enter cards ด้วย
+    const subEls = document.querySelectorAll('.h-enter-unit');
+    subEls.forEach(el => {
+        el.textContent = s.dateFrom !== s.dateTo ? 'ORDERS THIS SESSION' : 'ORDERS TODAY';
+    });
+}
+
+// ════════════════════════════════════════
+//   BANNER
+// ════════════════════════════════════════
+function hShowSessionBanner(holidays) {
+    // ลบ banner เก่าออกก่อน
+    const old = document.getElementById('hq-session-banner');
+    if(old) old.remove();
+
+    const today = dateToKey(new Date());
+    const dateFrom = holidays.length > 0 ? holidays[0] : today;
+    const holidayText = holidays.map(k => thaiShortDate(k)).join(', ');
+
+    const banner = document.createElement('div');
+    banner.id = 'hq-session-banner';
+    banner.style.cssText = `
+        position:fixed; top:60px; left:50%; transform:translateX(-50%);
+        z-index:10001; width:min(620px,96vw);
+        background:#1a1a1a; border:1.5px solid rgba(255,193,7,0.55);
+        border-radius:16px; padding:20px 24px;
+        box-shadow:0 8px 32px rgba(0,0,0,0.35);
+        font-family:'Sarabun','Prompt',sans-serif;
+        animation: bannerSlide 0.35s cubic-bezier(0.4,0,0.2,1);
+    `;
+
+    const titleText = holidays.length > 0
+        ? `ตรวจพบ <span style="color:#FFC107;font-weight:800">${holidays.length} วันหยุด</span> ก่อนวันนี้ (${holidayText})`
+        : 'กำหนด Session วันนี้';
+
+    banner.innerHTML = `
+        <style>
+        @keyframes bannerSlide {
+            from { opacity:0; transform:translateX(-50%) translateY(-12px); }
+            to   { opacity:1; transform:translateX(-50%) translateY(0); }
+        }
+        .hq-ban-btn {
+            padding:9px 20px; border-radius:10px; border:1.5px solid;
+            font-family:'Sarabun',sans-serif; font-size:0.88rem; font-weight:700;
+            cursor:pointer; transition:all 0.2s; letter-spacing:0.5px;
+        }
+        </style>
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
+            <div style="flex:1;min-width:0">
+                <div style="font-size:0.72rem;letter-spacing:2.5px;color:rgba(255,193,7,0.7);text-transform:uppercase;margin-bottom:6px">Smart Session</div>
+                <div style="font-size:1rem;color:#fff;line-height:1.5">${titleText}</div>
+                ${holidays.length > 0
+                    ? `<div style="font-size:0.82rem;color:#888;margin-top:4px">รวมออเดอร์ตั้งแต่ ${thaiShortDate(dateFrom)} ถึงวันนี้เข้า session เดียวกัน?</div>`
+                    : ''}
+            </div>
+            <button onclick="document.getElementById('hq-session-banner').remove()" style="background:none;border:none;color:#555;font-size:1.3rem;cursor:pointer;line-height:1;padding:0 4px">✕</button>
+        </div>
+        <div style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap">
+            ${holidays.length > 0 ? `
+            <button class="hq-ban-btn" style="background:rgba(255,193,7,0.12);border-color:rgba(255,193,7,0.5);color:#FFC107"
+                onclick="hBannerMerge('${dateFrom}')">
+                รวม ${holidays.length} วันหยุด
+            </button>` : ''}
+            <button class="hq-ban-btn" style="background:rgba(255,255,255,0.05);border-color:rgba(255,255,255,0.15);color:#ccc"
+                onclick="hBannerToday()">
+                ${holidays.length > 0 ? 'ไม่รวม — วันนี้อย่างเดียว' : 'วันนี้อย่างเดียว'}
+            </button>
+            <button class="hq-ban-btn" style="background:rgba(255,255,255,0.03);border-color:rgba(255,255,255,0.1);color:#888"
+                onclick="hBannerCustom()">
+                กำหนดเอง
+            </button>
+        </div>
+    `;
+    document.body.appendChild(banner);
+}
+
+function hBannerMerge(dateFrom) {
+    const s = initSessionForToday(dateFrom);
+    hApplySession(s);
+    hRefreshDashboard();
+    const banner = document.getElementById('hq-session-banner');
+    if(banner) banner.remove();
+    hShowToast(`รวม session: ${s.label}`);
+}
+function hBannerToday() {
+    const s = initSessionForToday(null);
+    hApplySession(s);
+    hRefreshDashboard();
+    const banner = document.getElementById('hq-session-banner');
+    if(banner) banner.remove();
+}
+function hBannerCustom() {
+    const banner = document.getElementById('hq-session-banner');
+    if(banner) banner.remove();
+    hShowDatePicker();
+}
+function hShowToast(msg, isError) {
+    let t = document.getElementById('hq-toast');
+    if(!t) {
+        t = document.createElement('div');
+        t.id = 'hq-toast';
+        t.style.cssText = `position:fixed;bottom:80px;left:50%;transform:translateX(-50%) translateY(10px);
+            padding:10px 24px;border-radius:30px;font-size:0.88rem;font-family:'Sarabun',sans-serif;
+            opacity:0;transition:all 0.3s;z-index:9999;pointer-events:none;`;
+        document.body.appendChild(t);
+    }
+    // BUG#4 FIX: รองรับ error style
+    if(isError) {
+        t.style.background = '#1a0a0a';
+        t.style.border     = '1px solid rgba(255,80,80,0.5)';
+        t.style.color      = '#ff7070';
+    } else {
+        t.style.background = '#1a1a1a';
+        t.style.border     = '1px solid rgba(255,193,7,0.4)';
+        t.style.color      = '#FFC107';
+    }
+    t.textContent = msg;
+    t.style.opacity='1'; t.style.transform='translateX(-50%) translateY(0)';
+    setTimeout(()=>{ t.style.opacity='0'; t.style.transform='translateX(-50%) translateY(10px)'; }, isError ? 5000 : 2800);
+}
+
+// ════════════════════════════════════════
+//   DATE PICKER MODAL (กำหนดเอง)
+// ════════════════════════════════════════
+function hShowDatePicker() {
+    const old = document.getElementById('hq-date-picker');
+    if(old) old.remove();
+
+    const today = dateToKey(new Date());
+    const curFrom = hSession ? hSession.dateFrom : today;
+
+    const modal = document.createElement('div');
+    modal.id = 'hq-date-picker';
+    modal.style.cssText = `
+        position:fixed;inset:0;z-index:10000;
+        display:flex;align-items:center;justify-content:center;
+        background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);
+        font-family:'Sarabun','Prompt',sans-serif;
+    `;
+    modal.innerHTML = `
+        <div style="background:#1a1a1a;border:1.5px solid rgba(255,193,7,0.35);border-radius:20px;
+            padding:28px 28px 24px;width:min(480px,92vw);box-shadow:0 20px 50px rgba(0,0,0,0.5)">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+                <div>
+                    <div style="font-size:0.72rem;letter-spacing:2.5px;color:rgba(255,193,7,0.6);text-transform:uppercase;margin-bottom:4px">Smart Session</div>
+                    <div style="font-size:1.1rem;font-weight:700;color:#fff">กำหนด Date Range</div>
+                </div>
+                <button onclick="document.getElementById('hq-date-picker').remove()"
+                    style="background:none;border:none;color:#555;font-size:1.4rem;cursor:pointer">✕</button>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">
+                <div>
+                    <label style="font-size:0.75rem;color:#888;letter-spacing:1px;display:block;margin-bottom:6px">วันเริ่มต้น (DATE FROM)</label>
+                    <input type="date" id="hq-dp-from" value="${curFrom}"
+                        max="${today}"
+                        style="width:100%;padding:10px 12px;border-radius:10px;border:1.5px solid rgba(255,255,255,0.12);
+                        background:rgba(255,255,255,0.06);color:#fff;font-family:'Sarabun',sans-serif;font-size:0.95rem;outline:none">
+                </div>
+                <div>
+                    <label style="font-size:0.75rem;color:#888;letter-spacing:1px;display:block;margin-bottom:6px">วันสิ้นสุด (DATE TO)</label>
+                    <input type="date" id="hq-dp-to" value="${today}"
+                        max="${today}"
+                        style="width:100%;padding:10px 12px;border-radius:10px;border:1.5px solid rgba(255,255,255,0.12);
+                        background:rgba(255,255,255,0.06);color:#fff;font-family:'Sarabun',sans-serif;font-size:0.95rem;outline:none">
+                </div>
+            </div>
+            <div id="hq-dp-preview" style="background:rgba(255,193,7,0.07);border:1px solid rgba(255,193,7,0.2);
+                border-radius:10px;padding:10px 14px;font-size:0.88rem;color:#E5C07B;margin-bottom:18px;min-height:36px"></div>
+            <div style="display:flex;gap:10px;justify-content:flex-end">
+                <button onclick="document.getElementById('hq-date-picker').remove()"
+                    style="padding:9px 20px;border-radius:10px;border:1.5px solid rgba(255,255,255,0.12);
+                    background:transparent;color:#888;font-family:'Sarabun',sans-serif;font-size:0.88rem;cursor:pointer">
+                    ยกเลิก
+                </button>
+                <button onclick="hConfirmDatePicker()"
+                    style="padding:9px 24px;border-radius:10px;border:1.5px solid rgba(255,193,7,0.5);
+                    background:rgba(255,193,7,0.12);color:#FFC107;font-family:'Sarabun',sans-serif;
+                    font-size:0.88rem;font-weight:700;cursor:pointer">
+                    ยืนยัน
+                </button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+
+    // live preview
+    function updatePreview() {
+        const f = document.getElementById('hq-dp-from').value;
+        const t = document.getElementById('hq-dp-to').value;
+        const pr = document.getElementById('hq-dp-preview');
+        if(!f || !t || f > t) { pr.textContent = 'กรุณาเลือกวันที่ให้ถูกต้อง'; return; }
+        pr.textContent = 'Session: ' + buildSessionLabelFull(f, t);
+    }
+    document.getElementById('hq-dp-from').addEventListener('input', updatePreview);
+    document.getElementById('hq-dp-to').addEventListener('input', updatePreview);
+    updatePreview();
+}
+function hConfirmDatePicker() {
+    const f = document.getElementById('hq-dp-from').value;
+    const t = document.getElementById('hq-dp-to').value;
+    if(!f || !t || f > t) { alert('วันที่ไม่ถูกต้อง'); return; }
+    const s = { dateFrom: f, dateTo: t, label: buildSessionLabelFull(f, t), savedAt: Date.now() };
+    hSession = s;
+    saveSession(s);
+    hApplySession(s);
+    hRefreshDashboard();
+    document.getElementById('hq-date-picker').remove();
+    hShowToast(`Session: ${s.label}`);
+}
+
+// ════════════════════════════════════════
+//   SETTINGS PANEL (วันหยุดกำหนดเอง + History)
+// ════════════════════════════════════════
+function hShowSettings() {
+    const old = document.getElementById('hq-settings-modal');
+    if(old) old.remove();
+
+    const customHols  = getCustomHolidays();
+    const history     = loadHistory();
+    const today       = dateToKey(new Date());
+
+    const modal = document.createElement('div');
+    modal.id = 'hq-settings-modal';
+    modal.style.cssText = `
+        position:fixed;inset:0;z-index:10000;
+        display:flex;align-items:flex-start;justify-content:center;
+        background:rgba(0,0,0,0.65);backdrop-filter:blur(4px);
+        padding:60px 16px 24px;overflow-y:auto;
+        font-family:'Sarabun','Prompt',sans-serif;
+    `;
+
+    const histHTML = history.length === 0
+        ? `<div style="color:#555;font-size:0.85rem;padding:12px 0">ยังไม่มีประวัติ</div>`
+        : history.map((h, idx) => `
+            <div style="display:flex;justify-content:space-between;align-items:center;
+                padding:12px 14px;border-radius:10px;background:rgba(255,255,255,0.03);
+                border:1px solid rgba(255,255,255,0.06);margin-bottom:8px">
+                <div>
+                    <div style="font-size:0.88rem;color:#ddd">${h.label}</div>
+                    <div style="font-size:0.75rem;color:#555;margin-top:2px">
+                        ${new Date(h.savedAt).toLocaleString('th-TH')}
+                    </div>
+                </div>
+                <button data-hist-idx="${idx}"
+                    style="padding:6px 14px;border-radius:8px;border:1px solid rgba(255,193,7,0.35);
+                    background:rgba(255,193,7,0.08);color:#FFC107;font-size:0.78rem;cursor:pointer;
+                    font-family:'Sarabun',sans-serif;white-space:nowrap"
+                    onclick="hRestoreSessionByIdx(${idx})">
+                    โหลด
+                </button>
+            </div>`).join('');
+
+    const holHTML = [...customHols].sort().map(k => `
+        <div style="display:flex;justify-content:space-between;align-items:center;
+            padding:8px 12px;border-radius:8px;background:rgba(255,255,255,0.03);
+            border:1px solid rgba(255,255,255,0.06);margin-bottom:6px">
+            <span style="font-size:0.88rem;color:#ddd">${thaiShortDate(k)} <span style="color:#555;font-size:0.78rem">(${k})</span></span>
+            <button onclick="hRemoveCustomHoliday('${k}')"
+                style="padding:4px 10px;border-radius:6px;border:1px solid rgba(255,80,80,0.3);
+                background:rgba(255,80,80,0.08);color:#ff7070;font-size:0.78rem;cursor:pointer;
+                font-family:'Sarabun',sans-serif">
+                ลบ
+            </button>
+        </div>`).join('');
+
+    modal.innerHTML = `
+        <div style="background:#111;border:1.5px solid rgba(255,255,255,0.1);border-radius:22px;
+            padding:28px;width:min(560px,100%);box-shadow:0 24px 60px rgba(0,0,0,0.6)">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px">
+                <div>
+                    <div style="font-size:0.72rem;letter-spacing:2.5px;color:rgba(255,193,7,0.6);text-transform:uppercase;margin-bottom:4px">HQ System</div>
+                    <div style="font-size:1.15rem;font-weight:800;color:#fff">ตั้งค่า Smart Session</div>
+                </div>
+                <button onclick="document.getElementById('hq-settings-modal').remove()"
+                    style="background:none;border:none;color:#555;font-size:1.5rem;cursor:pointer">✕</button>
+            </div>
+
+            <!-- History -->
+            <div style="margin-bottom:26px">
+                <div style="font-size:0.75rem;letter-spacing:2px;text-transform:uppercase;color:#666;
+                    margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,0.07)">
+                    ประวัติ Session ย้อนหลัง (${history.length}/${MAX_HISTORY})
+                </div>
+                ${histHTML}
+            </div>
+
+            <!-- Custom Holidays -->
+            <div style="margin-bottom:26px">
+                <div style="font-size:0.75rem;letter-spacing:2px;text-transform:uppercase;color:#666;
+                    margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,0.07)">
+                    วันหยุดพิเศษที่กำหนดเอง (${customHols.size} วัน)
+                </div>
+                <div style="display:flex;gap:10px;margin-bottom:12px">
+                    <input type="date" id="hq-add-hol-input" max="${today}"
+                        style="flex:1;padding:9px 12px;border-radius:10px;border:1.5px solid rgba(255,255,255,0.1);
+                        background:rgba(255,255,255,0.05);color:#fff;font-family:'Sarabun',sans-serif;font-size:0.9rem;outline:none">
+                    <button onclick="hAddCustomHoliday()"
+                        style="padding:9px 18px;border-radius:10px;border:1.5px solid rgba(255,193,7,0.4);
+                        background:rgba(255,193,7,0.1);color:#FFC107;font-family:'Sarabun',sans-serif;
+                        font-size:0.88rem;font-weight:700;cursor:pointer;white-space:nowrap">
+                        + เพิ่ม
+                    </button>
+                </div>
+                <div id="hq-custom-hol-list">
+                    ${holHTML || '<div style="color:#555;font-size:0.85rem;padding:8px 0">ยังไม่มีวันหยุดพิเศษ</div>'}
+                </div>
+                <div style="font-size:0.75rem;color:#444;margin-top:8px;line-height:1.5">
+                    หมายเหตุ: อาทิตย์และวันหยุดนักขัตฤกษ์ไทยถูก detect อัตโนมัติอยู่แล้ว
+                </div>
+            </div>
+
+            <!-- Re-trigger Banner -->
+            <div style="display:flex;gap:10px;justify-content:flex-end">
+                <button onclick="hReTriggerBanner()"
+                    style="padding:9px 20px;border-radius:10px;border:1.5px solid rgba(255,255,255,0.1);
+                    background:transparent;color:#aaa;font-family:'Sarabun',sans-serif;font-size:0.88rem;cursor:pointer">
+                    เช็ควันหยุดอีกครั้ง
+                </button>
+                <button onclick="hShowDatePicker();document.getElementById('hq-settings-modal').remove()"
+                    style="padding:9px 20px;border-radius:10px;border:1.5px solid rgba(255,193,7,0.4);
+                    background:rgba(255,193,7,0.1);color:#FFC107;font-family:'Sarabun',sans-serif;
+                    font-size:0.88rem;font-weight:700;cursor:pointer">
+                    กำหนด Date Range
+                </button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+}
+
+function hAddCustomHoliday() {
+    const inp = document.getElementById('hq-add-hol-input');
+    const val = inp.value;
+    if(!val) return;
+    const set = getCustomHolidays();
+    // FIX E: เช็ค duplicate ก่อนเพิ่ม
+    if(set.has(val)) { hShowToast(`วันหยุด ${thaiShortDate(val)} มีอยู่แล้ว`, true); return; }
+    if(THAI_PUBLIC_HOLIDAYS.has(val)) { hShowToast(`${thaiShortDate(val)} เป็นวันหยุดนักขัตฤกษ์อยู่แล้ว`, true); return; }
+    set.add(val);
+    saveCustomHolidays(set);
+    inp.value = '';
+    // refresh list
+    document.getElementById('hq-settings-modal').remove();
+    hShowSettings();
+    hShowToast(`เพิ่มวันหยุด ${thaiShortDate(val)} แล้ว`);
+}
+function hRemoveCustomHoliday(key) {
+    const set = getCustomHolidays();
+    set.delete(key);
+    saveCustomHolidays(set);
+    document.getElementById('hq-settings-modal').remove();
+    hShowSettings();
+}
+function hReTriggerBanner() {
+    document.getElementById('hq-settings-modal').remove();
+    const today = dateToKey(new Date());
+    const holidays = detectHolidaysBefore(today);
+    hShowSessionBanner(holidays);
+}
+function hRestoreSession(from, to, label) {
+    const s = { dateFrom: from, dateTo: to, label: label, savedAt: Date.now() };
+    hSession = s;
+    saveSession(s);
+    hApplySession(s);
+    hRefreshDashboard();
+    document.getElementById('hq-settings-modal').remove();
+    hShowToast(`โหลด session: ${label}`);
+}
+// FIX D: โหลด session จาก history ด้วย index เพื่อไม่ต้อง pass label ผ่าน onclick string (หลีกเลี่ยง quote ขาด)
+function hRestoreSessionByIdx(idx) {
+    const hist = loadHistory();
+    const h = hist[idx];
+    if(!h) return;
+    const s = { dateFrom: h.dateFrom, dateTo: h.dateTo, label: h.label, savedAt: Date.now() };
+    hSession = s;
+    saveSession(s);
+    hApplySession(s);
+    hRefreshDashboard();
+    document.getElementById('hq-settings-modal').remove();
+    hShowToast(`โหลด session: ${h.label}`);
+}
+
+// ── ปุ่ม Settings อยู่ใน HTML แล้ว (id="hq-settings-btn") ──
+// hInjectSettingsBtn ถูกลบออกเพื่อป้องกันปุ่มซ้ำกัน
+
+// ── Bootstrap: เรียกตอน init ──
+function hInitSession() {
+    const today    = dateToKey(new Date());
+    const saved    = loadSession();
+
+    // ถ้ามี session ที่บันทึกไว้แล้วสำหรับวันนี้ → โหลดต่อเลย
+    if(saved && saved.dateTo === today) {
+        hSession = saved;
+        hApplySession(saved);
+    } else {
+        // session ใหม่ — detect วันหยุดก่อนหน้า
+        const holidays = detectHolidaysBefore(today);
+        // บันทึก session เก่าเข้า history ก่อน
+        if(saved) pushHistory(saved);
+        // สร้าง session วันนี้ provisional (วันเดียวก่อน รอ user confirm)
+        const provisional = initSessionForToday(today);
+        hApplySession(provisional);
+        // แสดง banner ให้ user เลือก
+        setTimeout(() => hShowSessionBanner(holidays), 400);
+    }
+
+    // hInjectSettingsBtn() ถูกลบออกแล้ว — ปุ่มอยู่ใน HTML โดยตรง
+}
+
+// ═══════════════════════════════════════════════════════
+//   INIT — เรียกโดย auth observer หลัง login สำเร็จ
+// ═══════════════════════════════════════════════════════
+let appInitialized = false;
+function initApp() {
+    if(appInitialized) return;
+    appInitialized = true;
+
+    try { hInitCharts(); } catch(e){ console.log('Home charts skipped', e); }
+
+    // Smart Session
+    hInitSession();
+
+    // Firebase subscriptions
+    eSubscribeFirebase();
+    aSubscribeFirebase();
+    subscribeSession();
+
+    // ENYX init
+    const today = getShortDate();
+    document.getElementById('e-currentDateNav').innerText = today;
+    document.getElementById('e-dashDate').innerText = eData.date;
+    const eInputs   = document.querySelectorAll('#e-tallyForm input[type="number"]');
+    const eRadios   = document.querySelectorAll('input[name="e-round"]');
+    eRadios.forEach(r => r.addEventListener('change', eLoadRoundData));
+    eInputs.forEach((inp,idx) => {
+        inp.addEventListener('input', eUpdateRealtimeTotal);
+        inp.addEventListener('keydown', e => {
+            if(e.key==='Enter') { e.preventDefault(); const next=eInputs[idx+1]; if(next){next.focus();next.select();}else{eSaveRound();} }
+        });
+    });
+    eLoadRoundData();
+    eRenderSummary();
+    try { eInitCharts(); } catch(e){}
+    eUpdateDashboard();
+
+    // AURIST init
+    document.getElementById('a-currentDate').textContent = `ประจำวันที่ ${getThaiDate()}`;
+    const aRadios = document.querySelectorAll('input[name="a-round"]');
+    aRadios.forEach(r => r.addEventListener('change', aLoadRoundData));
+    const allA = [...document.querySelectorAll('#a-inputCard .a-input-field')];
+    aGetInputs().forEach((inp,idx) => {
+        inp.addEventListener('input', () => { aUpdateRealtimeTotal(); });
+        inp.addEventListener('focus', function(){ this.style.borderColor='rgba(229,192,123,0.5)'; this.style.boxShadow='0 0 16px rgba(229,192,123,0.2)'; });
+        inp.addEventListener('blur',  function(){ this.style.borderColor='rgba(255,255,255,0.09)'; this.style.boxShadow='none'; });
+        inp.addEventListener('keydown', e => {
+            if(e.key==='Enter'){e.preventDefault(); const next=allA[idx+1]; if(next){next.focus();}else{aSaveRound();}}
+        });
+    });
+    aLoadRoundData();
+    aRenderSummary();
+    aUpdateDashboard();
+
+    // ล้าง inline style display:none ที่ถูกเซ็ตตอน logout ออก แล้ว switchSystem จะ toggle class ให้ถูกต้อง
+    document.querySelectorAll('.system-wrap').forEach(w => w.style.display = '');
+    switchSystem(localStorage.getItem('last_system') || 'home');
+    hRefreshDashboard();
+}
+
+// DOMContentLoaded — แค่รอ auth state observer จัดการ
+document.addEventListener('DOMContentLoaded', () => {
+    // auth observer จะเรียก initApp() เองเมื่อ login สำเร็จ
+});
+</script>
+</body>
+</html>
